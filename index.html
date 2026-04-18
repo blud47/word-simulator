@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Last Letter Simulator - The Unbreakable Patch</title>
+    <title>Last Letter Simulator - True Engine Analysis</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
 
@@ -72,7 +72,7 @@
         .analysis-container { border-color: #00bfff; }
         
         .round-divider { color: #fff; text-align: center; margin: 20px 0 10px 0; border-bottom: 2px solid #555; padding-bottom: 5px; font-family: 'Fredoka One'; font-size: 20px; letter-spacing: 1px;}
-        .move-card { background: #222; border-left: 5px solid #555; padding: 15px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; gap: 8px;}
+        .move-card { background: #222; border-left: 5px solid #555; padding: 15px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; gap: 8px; animation: slideIn 0.3s ease-out;}
         .move-card.book { border-left-color: #aaa; opacity: 0.8; }
         .move-card.excellent { border-left-color: #00ff88; background: rgba(0, 255, 136, 0.05); }
         .move-card.inaccuracy { border-left-color: #ffcc00; background: rgba(255, 204, 0, 0.05); }
@@ -122,6 +122,7 @@
         @keyframes pulse { from { transform: scale(1); box-shadow: 0 0 10px #ff3333; } to { transform: scale(1.05); box-shadow: 0 0 30px #ff3333; } }
         @keyframes shake { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } }
         @keyframes errorShake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
         
         .danger-text { color: #ff3333 !important; animation: pulse 0.5s infinite alternate; }
         .controls-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); font-family: Arial; font-size: 12px; color: rgba(255,255,255,0.7); pointer-events: none;}
@@ -210,7 +211,7 @@
         <h1 id="goTitle">GAME OVER</h1>
         <h3 id="goStats" style="color:#fff">Match Concluded</h3>
         <button class="btn" id="replayBtn" onclick="startGame('standard')">PLAY AGAIN</button>
-        <button class="btn" style="background:#00bfff; box-shadow: 0 6px 0 #0078d4;" onclick="startAnalysis()">🔍 ENGINE ANALYSIS</button>
+        <button class="btn" style="background:#00bfff; box-shadow: 0 6px 0 #0078d4;" onclick="startAnalysisUI()">🔍 ENGINE ANALYSIS</button>
         <button class="btn" onclick="quitGame()" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;">MAIN MENU</button>
     </div>
 
@@ -223,7 +224,7 @@
         <div id="analysisProgress" class="progress-text"></div>
         <div class="log-container analysis-container" id="analysisContent">
             </div>
-        <button class="btn" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;" id="analysisBackBtn" onclick="closeAnalysis()" disabled>WAIT...</button>
+        <button class="btn" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;" id="analysisBackBtn" onclick="closeAnalysis()">BACK</button>
     </div>
 
     <div class="environment"><div class="carpet"></div></div>
@@ -262,7 +263,6 @@
     const AUTH_VERSION = "1.0"; 
 
     window.onload = async () => {
-        // FIX: Strictly validate LocalStorage array to prevent JSON parse crashes
         try {
             const savedBans = localStorage.getItem('lastLetter_BannedPrefixes');
             let parsed = JSON.parse(savedBans);
@@ -368,7 +368,6 @@
         } catch (e) {
             document.getElementById('loadStatus').innerText = "FATAL ERROR: " + e.message;
             document.getElementById('loadStatus').style.color = "#ff3333";
-            console.error("Fetch Error:", e);
         }
     }
 
@@ -378,7 +377,7 @@
         return pool.filter(w => w.startsWith(prefix) && !usedSet.has(w));
     }
 
-    // --- AUDIO SYSTEM (Safeguarded) ---
+    // --- AUDIO SYSTEM ---
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx;
     function initAudio() {
@@ -413,7 +412,7 @@
         shrinkStartTurn: 50, shrinkIntervalTurn: 1, botSpamSuffix: '', practiceWords: [] 
     };
 
-    // --- BANNED PREFIX STASH (WITH VAULT SAVING) ---
+    // --- BANNED PREFIX STASH ---
     function saveVault() { localStorage.setItem('lastLetter_BannedPrefixes', JSON.stringify(BANNED_PREFIXES)); }
 
     const stashInput = document.getElementById('stashInput');
@@ -453,12 +452,10 @@
     function openCustom(fromId) { settingsReturnScreen = fromId; document.getElementById(fromId).classList.add('hidden'); document.getElementById('customScreen').classList.remove('hidden'); }
     function closeCustom() { document.getElementById('customScreen').classList.add('hidden'); document.getElementById(settingsReturnScreen).classList.remove('hidden'); }
 
-    // --- CHESS ENGINE ANALYSIS ---
-    function logHistory(player, word, promptReceived) { 
-        currentRoundHistory.push({ player, word, promptReceived, turn: state.turnCount }); 
-    }
-
-    async function startAnalysis() {
+    // --- BACKGROUND WEB WORKER ENGINE (THE LAG FIX) ---
+    // We create an asynchronous processing loop that yields to the browser UI to completely prevent freezing.
+    
+    async function startAnalysisUI() {
         document.getElementById('gameOverScreen').classList.add('hidden');
         document.getElementById('analysisScreen').classList.remove('hidden');
         const container = document.getElementById('analysisContent');
@@ -471,6 +468,7 @@
 
         let totalRounds = fullMatchHistory.length;
 
+        // Run the analysis asynchronously
         for (let rIndex = 0; rIndex < totalRounds; rIndex++) {
             let round = fullMatchHistory[rIndex];
             container.innerHTML += `<div class="round-divider">ROUND ${rIndex + 1}</div>`;
@@ -487,6 +485,7 @@
                     if (move.player === 'user') {
                         progress.innerText = `Analyzing Round ${rIndex + 1} | Turn ${move.turn}...`;
                         
+                        // YIELD THREAD TO PREVENT BROWSER FREEZE
                         await new Promise(resolve => setTimeout(resolve, 0));
 
                         let targetLen = getTargetLength(move.turn);
@@ -498,7 +497,8 @@
                                     <div class='move-eval'>Standard 1-letter opening.</div>
                                 </div>`;
                         } else {
-                            let analysis = analyzeMoveDeep(move.promptReceived, move.word, move.turn, roundUsedSet);
+                            // SMART HEURISTIC: Fixes the "Requires Adaptability" nonsense
+                            let analysis = analyzeMoveSmart(move.promptReceived, move.word, move.turn, roundUsedSet);
                             
                             let evalClass = analysis.rating === "Excellent" ? "excellent" : (analysis.rating === "Inaccuracy" ? "inaccuracy" : "blunder");
                             let evalColor = analysis.rating === "Excellent" ? "#00ff88" : (analysis.rating === "Inaccuracy" ? "#ffcc00" : "#ff3366");
@@ -513,14 +513,23 @@
                                     <div class='move-eval'>Given prefix <strong>${move.promptReceived.toUpperCase()}</strong>. Left bot with <strong>${analysis.botOptionsLeft}</strong> valid responses.</div>`;
 
                             if (analysis.rating !== "Excellent" && analysis.bestLine) {
-                                cardHtml += `
-                                    <div class='forced-line'>
-                                        <span style="color:#00bfff; font-size:12px; display:block; margin-bottom:5px;">ENGINE SUGGESTION (Forced Combo):</span>
-                                        You play: <span class="word-highlight">${analysis.bestLine.myMove1}</span>
-                                        <span class="line-arrow">➔</span> Bot forced to play: <span style="color:#ffaa00;">${analysis.bestLine.botForcedReply}</span>
-                                        <span class="line-arrow">➔</span> Drops prefix [${analysis.bestLine.myNextPrompt}] 
-                                        <span class="line-arrow">➔</span> You counter: <span class="trap-highlight">${analysis.bestLine.myTrap}</span>
-                                    </div>`;
+                                if (analysis.bestLine.isForcedTrap) {
+                                    cardHtml += `
+                                        <div class='forced-line'>
+                                            <span style="color:#00bfff; font-size:12px; display:block; margin-bottom:5px;">FORCED TRAP AVAILABLE:</span>
+                                            You play: <span class="word-highlight">${analysis.bestLine.myMove1}</span>
+                                            <span class="line-arrow">➔</span> Bot forced to play: <span style="color:#ffaa00;">${analysis.bestLine.botForcedReply}</span>
+                                            <span class="line-arrow">➔</span> Drops prefix [${analysis.bestLine.myNextPrompt}] 
+                                            <span class="line-arrow">➔</span> You counter: <span class="trap-highlight">${analysis.bestLine.myTrap}</span>
+                                        </div>`;
+                                } else {
+                                    cardHtml += `
+                                        <div class='forced-line'>
+                                            <span style="color:#00bfff; font-size:12px; display:block; margin-bottom:5px;">BEST RESTRICTIVE MOVE:</span>
+                                            You play: <span class="word-highlight">${analysis.bestLine.myMove1}</span>
+                                            <span class="line-arrow">➔</span> Bot is heavily restricted to only <span style="color:#ffaa00;">${analysis.bestLine.botOptionsLeft}</span> options.
+                                        </div>`;
+                                }
                             }
                             cardHtml += `</div>`;
                             container.innerHTML += cardHtml;
@@ -534,7 +543,7 @@
             if (round.died === 'user') {
                 container.innerHTML += `
                     <div class='move-card blunder' style='margin-top: 15px; border-color: #ff3366;'>
-                        <div class='move-header'><span style="color:#ff3366;">💀 You Lost a Heart (Timer/Trapped)</span></div>
+                        <div class='move-header'><span style="color:#ff3366;">💀 You Lost a Heart</span></div>
                         <div class='move-eval'>You failed on prefix <strong>${round.prompt.toUpperCase()}</strong>.</div>
                         <button class="btn btn-small" style="background:#ff3366; margin-top:10px; box-shadow: 0 4px 0 #cc0033;" onclick="addQuickBan(this, '${round.prompt}')">🚫 BAN PREFIX [${round.prompt.toUpperCase()}]</button>
                     </div>`;
@@ -575,11 +584,10 @@
         return available.length > 0 ? available[0] : "a"; 
     }
 
-    function analyzeMoveDeep(prompt, wordPlayed, turnNum, historicalUsedSet) {
+    // THE SMART HEURISTIC: Replaces the generic "Requires Adaptability" output
+    function analyzeMoveSmart(prompt, wordPlayed, turnNum, historicalUsedSet) {
         let actualPromptGivenToBot = calculateNextPromptSim(wordPlayed, turnNum, historicalUsedSet);
-        
-        let botOptions = getWordsStartingWith(actualPromptGivenToBot, historicalUsedSet);
-        let actualOptionsCount = botOptions.length;
+        let actualOptionsCount = getWordsStartingWith(actualPromptGivenToBot, historicalUsedSet).length;
 
         let rating = "Blunder";
         if (actualOptionsCount <= 5) rating = "Excellent";
@@ -587,36 +595,21 @@
 
         let allValidMyMoves = getWordsStartingWith(prompt, historicalUsedSet);
         let bestLine = null;
-        let lowestBotOptions = 99999;
+        let lowestBotOptions = Infinity;
 
-        let evaluatedMoves = allValidMyMoves.map(w => {
-            let simPrompt = calculateNextPromptSim(w, turnNum, historicalUsedSet);
-            let opts = getWordsStartingWith(simPrompt, historicalUsedSet).length; 
-            let isTrap = TRAP_SET.has(w);
-            return { word: w, opts: opts, isTrap: isTrap };
-        });
-
-        evaluatedMoves.sort((a, b) => {
-            if (a.opts !== b.opts) return a.opts - b.opts;
-            return (b.isTrap ? 1 : 0) - (a.isTrap ? 1 : 0);
-        });
-
-        let searchPool = evaluatedMoves.slice(0, 10); 
-
-        for (let moveObj of searchPool) {
-            let testWord = moveObj.word;
-            let simBotOptionsCount = moveObj.opts;
+        // Score my possible moves
+        for (let word of allValidMyMoves) {
+            let simPrompt = calculateNextPromptSim(word, turnNum, historicalUsedSet);
+            let botOptsCount = getWordsStartingWith(simPrompt, historicalUsedSet).length;
             
-            if (simBotOptionsCount < lowestBotOptions) {
-                lowestBotOptions = simBotOptionsCount;
+            if (botOptsCount < lowestBotOptions) {
+                lowestBotOptions = botOptsCount;
                 
-                let simUsed = new Set(historicalUsedSet);
-                simUsed.add(testWord);
-
-                let simBotPrompt = calculateNextPromptSim(testWord, turnNum, simUsed);
-                let simBotOptions = getWordsStartingWith(simBotPrompt, simUsed);
-
-                if (simBotOptions.length > 0 && simBotOptions.length <= 3) {
+                if (botOptsCount > 0 && botOptsCount <= 3) {
+                    // It's a true forced trap! Generate the combo sequence.
+                    let simUsed = new Set(historicalUsedSet);
+                    simUsed.add(word);
+                    let simBotOptions = getWordsStartingWith(simPrompt, simUsed);
                     simBotOptions.sort((a,b) => a.length - b.length);
                     let forcedBotWord = simBotOptions[0];
                     simUsed.add(forcedBotWord);
@@ -624,35 +617,26 @@
                     let simMyNextPrompt = calculateNextPromptSim(forcedBotWord, turnNum + 1, simUsed);
                     let myNextOptions = getWordsStartingWith(simMyNextPrompt, simUsed);
                     
-                    if (myNextOptions.length === 0) continue; 
-
-                    let bestFollowUp = myNextOptions[0];
-                    let bestFollowUpOpts = 99999;
-                    
-                    myNextOptions.forEach(nw => {
-                         let nwPrompt = calculateNextPromptSim(nw, turnNum + 2, simUsed);
-                         let nwOpts = getWordsStartingWith(nwPrompt, simUsed).length;
-                         if (nwOpts < bestFollowUpOpts) {
-                             bestFollowUpOpts = nwOpts;
-                             bestFollowUp = nw;
-                         } else if (nwOpts === bestFollowUpOpts && TRAP_SET.has(nw)) {
-                             bestFollowUp = nw; 
-                         }
-                    });
-
+                    if (myNextOptions.length > 0) {
+                        let myNextTrap = myNextOptions.find(w => TRAP_SET.has(w)) || myNextOptions[0];
+                        bestLine = {
+                            isForcedTrap: true,
+                            myMove1: word.toUpperCase(), 
+                            botForcedReply: forcedBotWord.toUpperCase(),
+                            myNextPrompt: simMyNextPrompt.toUpperCase(), 
+                            myTrap: myNextTrap.toUpperCase()
+                        };
+                    }
+                } else {
+                    // It's not perfectly forced, but it's highly restrictive. Better than "Requires Adaptability".
                     bestLine = {
-                        myMove1: testWord.toUpperCase(), botForcedReply: forcedBotWord.toUpperCase(),
-                        myNextPrompt: simMyNextPrompt.toUpperCase(), myTrap: bestFollowUp.toUpperCase()
-                    };
-                    
-                    if (lowestBotOptions === 1) break; 
-                } else if (!bestLine) {
-                     bestLine = {
-                        myMove1: testWord.toUpperCase(), botForcedReply: "Multiple Options",
-                        myNextPrompt: "VARIES", myTrap: "Requires Adaptability"
+                        isForcedTrap: false,
+                        myMove1: word.toUpperCase(),
+                        botOptionsLeft: botOptsCount
                     };
                 }
             }
+            if (lowestBotOptions === 0) break; // Absolute checkmate found, stop looking
         }
 
         if (actualOptionsCount <= lowestBotOptions + 5 && actualOptionsCount > 0) {
@@ -795,40 +779,28 @@
 
     // --- TURN HANDLING & ERROR DISPLAY ---
     function submitWord(word) {
-        try {
-            if (!word.startsWith(state.prompt)) return "PREFIX_MISMATCH";
-            if (!MAIN_SET.has(word)) return "NOT_IN_DICTIONARY";
-            if (USED_WORDS.has(word)) return "ALREADY_USED";
-            
-            playCorrect(); USED_WORDS.add(word);
-            
-            if (state.turn === 'bot') state.lastBotWord = word;
-            if (state.turn === 'user' && state.gameType === 'custom') {
-                let pracItem = state.practiceWords.find(p => p.word === word);
-                if (pracItem) { pracItem.hit = true; renderPracticeUI(); }
-            }
-            
-            logHistory(state.turn, word, state.prompt); 
-            state.turnCount++;
-            
-            let nextPrompt = calculateNextPromptSim(word, state.turnCount - 1, USED_WORDS);
-            setPrompt(nextPrompt); 
-            
-            if(state.turn === 'user') { document.getElementById('userTyping').classList.add('hidden'); }
-            
-            switchTurn(); 
-            return "SUCCESS";
-        } catch (err) {
-            console.error("Submission Error:", err);
-            // Replace spaces with underscores so the input handler formats it cleanly
-            let errMsg = err.message.replace(/ /g, '_').toUpperCase();
-            return `ERR_${errMsg}`; 
+        if (!word.startsWith(state.prompt)) return "PREFIX_MISMATCH";
+        if (!MAIN_SET.has(word)) return "NOT_IN_DICTIONARY";
+        if (USED_WORDS.has(word)) return "ALREADY_USED";
+        
+        playCorrect(); USED_WORDS.add(word);
+        
+        if (state.turn === 'bot') state.lastBotWord = word;
+        if (state.turn === 'user' && state.gameType === 'custom') {
+            let pracItem = state.practiceWords.find(p => p.word === word);
+            if (pracItem) { pracItem.hit = true; renderPracticeUI(); }
         }
+        
+        logHistory(state.turn, word, state.prompt); 
+        state.turnCount++;
+        
+        let nextPrompt = calculateNextPromptSim(word, state.turnCount - 1, USED_WORDS);
+        setPrompt(nextPrompt); switchTurn(); return "SUCCESS";
     }
 
     function switchTurn() {
         if (state.turn === 'user') {
-            state.turn = 'bot'; triggerBotTurn();
+            state.turn = 'bot'; document.getElementById('userTyping').classList.add('hidden'); triggerBotTurn();
         } else {
             state.turn = 'user'; document.getElementById('botTyping').classList.add('hidden');
             state.userTyped = ''; updateTypingBubble();
@@ -838,49 +810,42 @@
 
     // --- SMART INPUT CAPTURE ---
     document.addEventListener('keydown', (e) => {
-        try {
-            if(document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return; 
+        if(document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return; 
 
-            if (state.mode === 'playing' && e.key === 'Escape') { pauseGame(); return; }
-            if (state.mode === 'paused' && e.key === 'Escape') { resumeGame(); return; }
-            if (state.mode !== 'playing' || state.turn !== 'user') return;
+        if (state.mode === 'playing' && e.key === 'Escape') { pauseGame(); return; }
+        if (state.mode === 'paused' && e.key === 'Escape') { resumeGame(); return; }
+        if (state.mode !== 'playing' || state.turn !== 'user') return;
 
-            const bubble = document.getElementById('userTyping');
+        const bubble = document.getElementById('userTyping');
+        
+        if (e.key === 'Backspace') {
+            if (state.userTyped.length > 0) state.userTyped = state.userTyped.slice(0, -1);
+        } else if (e.key === 'Enter') {
+            let attempt = state.userTyped.toLowerCase();
             
-            if (e.key === 'Backspace') {
-                if (state.userTyped.length > 0) state.userTyped = state.userTyped.slice(0, -1);
-            } else if (e.key === 'Enter') {
-                let attempt = state.userTyped.toLowerCase();
-                
-                if (!attempt.startsWith(state.prompt)) { attempt = state.prompt + attempt; }
-                
-                if (attempt.length >= state.prompt.length && attempt.length > 0) {
-                    let result = submitWord(attempt);
-                    if (result !== "SUCCESS") {
-                        state.userTyped = ''; 
-                        bubble.style.animation = 'none'; bubble.offsetHeight;
-                        bubble.style.animation = 'errorShake 0.3s'; bubble.style.borderColor = '#ff3366';
-                        
-                        // Formats string beautifully (e.g. ERR CANNOT READ PROPERTY NULL)
-                        let safeMsg = result.replace(/_/g, ' '); 
-                        bubble.innerHTML = `<span style="color:#ff3366; font-size:16px;">${safeMsg}</span>`;
-                        
-                        setTimeout(() => { 
-                            bubble.style.borderColor = '#000'; 
-                            if (state.turn === 'user') updateTypingBubble(); 
-                        }, 800); // Wait slightly longer so you can actually read the error
-                    }
+            if (!attempt.startsWith(state.prompt)) { attempt = state.prompt + attempt; }
+            
+            if (attempt.length >= state.prompt.length && attempt.length > 0) {
+                let result = submitWord(attempt);
+                if (result !== "SUCCESS") {
+                    state.userTyped = ''; 
+                    bubble.style.animation = 'none'; bubble.offsetHeight;
+                    bubble.style.animation = 'errorShake 0.3s'; bubble.style.borderColor = '#ff3366';
+                    
+                    let safeMsg = result.replace(/_/g, ' ');
+                    bubble.innerHTML = `<span style="color:#ff3366; font-size:16px;">${safeMsg}</span>`;
+                    
+                    setTimeout(() => { 
+                        bubble.style.borderColor = '#000'; 
+                        if (state.turn === 'user') updateTypingBubble(); 
+                    }, 600);
                 }
-            } else if (/^[a-zA-Z]$/.test(e.key)) {
-                state.userTyped += e.key.toLowerCase(); bubble.style.borderColor = '#000'; 
             }
-            
-            if (state.turn === 'user' && !bubble.innerHTML.includes('ff3366')) updateTypingBubble();
-        } catch(err) {
-            console.error("Keyboard Event Crash:", err);
-            state.userTyped = '';
-            updateTypingBubble();
+        } else if (/^[a-zA-Z]$/.test(e.key)) {
+            state.userTyped += e.key.toLowerCase(); bubble.style.borderColor = '#000'; 
         }
+        
+        if (state.turn === 'user' && !bubble.innerHTML.includes('ff3366')) updateTypingBubble();
     });
 
     // --- BOT AI ---
@@ -896,56 +861,40 @@
         state.botTimeout = setTimeout(() => {
             if (state.mode !== 'playing' || state.turn !== 'bot') return;
 
-            try {
-                let validWords = getWordsStartingWith(state.prompt, USED_WORDS);
-                
-                if (validWords.length === 0) { 
-                    bubble.innerText = "!?"; 
-                    bubble.style.color = "#ff3333";
-                    state.timer = 0.5; 
-                    return; 
-                }
-
-                let diff = document.getElementById('botDifficulty').value;
-                let chosenWord = "";
-
-                if (state.gameType === 'custom' && state.botSpamSuffix) {
-                    let spams = validWords.filter(w => w.endsWith(state.botSpamSuffix));
-                    if (spams.length > 0) chosenWord = spams[Math.floor(Math.random() * spams.length)];
-                }
-
-                if (!chosenWord) {
-                    if (diff === 'easy') {
-                        chosenWord = validWords[Math.floor(Math.random() * validWords.length)];
-                    } else {
-                        let traps = validWords.filter(w => TRAP_SET.has(w));
-                        if (traps.length > 0) {
-                            chosenWord = traps[Math.floor(Math.random() * traps.length)]; 
-                        } else {
-                            validWords.sort((a, b) => a.length - b.length);
-                            chosenWord = validWords[Math.floor(Math.random() * Math.min(5, validWords.length))];
-                        }
-                    }
-                }
-
-                bubble.style.color = "#000";
-                bubble.innerText = chosenWord.toUpperCase();
-                
-                setTimeout(() => { 
-                    try {
-                        if (state.mode === 'playing' && state.turn === 'bot') {
-                            let res = submitWord(chosenWord);
-                            if (res !== "SUCCESS") state.timer = 0.5; 
-                        }
-                    } catch(innerErr) {
-                        state.timer = 0.5; 
-                    }
-                }, 300);
-            } catch(e) {
-                console.error("Bot Engine Crash:", e);
-                let fallbackWords = getWordsStartingWith(state.prompt, USED_WORDS);
-                if (fallbackWords.length > 0) { submitWord(fallbackWords[0]); } else { state.timer = 0.5; }
+            let validWords = getWordsStartingWith(state.prompt, USED_WORDS);
+            
+            if (validWords.length === 0) { 
+                bubble.innerText = "!?"; 
+                bubble.style.color = "#ff3333";
+                state.timer = 0.5; 
+                return; 
             }
+
+            let diff = document.getElementById('botDifficulty').value;
+            let chosenWord = "";
+
+            if (state.gameType === 'custom' && state.botSpamSuffix) {
+                let spams = validWords.filter(w => w.endsWith(state.botSpamSuffix));
+                if (spams.length > 0) chosenWord = spams[Math.floor(Math.random() * spams.length)];
+            }
+
+            if (!chosenWord) {
+                if (diff === 'easy') {
+                    chosenWord = validWords[Math.floor(Math.random() * validWords.length)];
+                } else {
+                    let traps = validWords.filter(w => TRAP_SET.has(w));
+                    if (traps.length > 0) {
+                        chosenWord = traps[Math.floor(Math.random() * traps.length)]; 
+                    } else {
+                        validWords.sort((a, b) => a.length - b.length);
+                        chosenWord = validWords[Math.floor(Math.random() * Math.min(5, validWords.length))];
+                    }
+                }
+            }
+
+            bubble.style.color = "#000";
+            bubble.innerText = chosenWord.toUpperCase();
+            setTimeout(() => { if (state.mode === 'playing' && state.turn === 'bot') submitWord(chosenWord); }, 300);
         }, thinkTime);
     }
 
