@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Last Letter Simulator - Secure Engine Edition</title>
+    <title>Last Letter Simulator - Async Engine Patch</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
 
@@ -84,6 +84,7 @@
         .line-arrow { color: #555; margin: 0 5px; font-weight: bold;}
         .word-highlight { color: #00bfff; font-weight: bold; text-transform: uppercase; }
         .trap-highlight { color: #ffcc00; font-weight: bold; text-transform: uppercase; }
+        .progress-text { font-size: 20px; color: #00bfff; text-align: center; font-family: 'Fredoka One'; margin-top: 10px;}
 
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
@@ -138,7 +139,7 @@
 
     <div id="loadingScreen" class="overlay hidden">
         <h1>Loading Dictionary...</h1>
-        <h3 id="loadStatus">Fetching data & traps...</h3>
+        <h3 id="loadStatus">Building Engine Hash Maps...</h3>
     </div>
 
     <div id="menuScreen" class="overlay hidden">
@@ -209,7 +210,7 @@
         <h1 id="goTitle">GAME OVER</h1>
         <h3 id="goStats" style="color:#fff">Match Concluded</h3>
         <button class="btn" id="replayBtn" onclick="startGame('standard')">PLAY AGAIN</button>
-        <button class="btn" style="background:#00bfff; box-shadow: 0 6px 0 #0078d4;" onclick="generateAnalysis()">🔍 ENGINE ANALYSIS</button>
+        <button class="btn" style="background:#00bfff; box-shadow: 0 6px 0 #0078d4;" onclick="startAnalysis()">🔍 ENGINE ANALYSIS</button>
         <button class="btn" onclick="quitGame()" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;">MAIN MENU</button>
     </div>
 
@@ -219,9 +220,10 @@
             <input type="text" id="analysisStashInput" placeholder="Manually ban a prefix here..." style="flex:1; background: #111; color: #00ff88; border: 2px solid #444; padding: 10px; border-radius: 6px; font-family: 'Fredoka One'; font-size: 16px; outline: none;">
             <button class="btn btn-small" style="margin:0; background:#ffaa00; box-shadow: 0 4px 0 #cc8800;" onclick="submitAnalysisBan()">BAN</button>
         </div>
+        <div id="analysisProgress" class="progress-text"></div>
         <div class="log-container analysis-container" id="analysisContent">
             </div>
-        <button class="btn" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;" onclick="closeAnalysis()">BACK</button>
+        <button class="btn" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;" id="analysisBackBtn" onclick="closeAnalysis()" disabled>WAIT...</button>
     </div>
 
     <div class="environment"><div class="carpet"></div></div>
@@ -257,17 +259,15 @@
     // --- KEYAUTH SECURITY VAULT ---
     const AUTH_APP_NAME = "Axeljohngarganera's Application";
     const AUTH_OWNER_ID = "gtXnY2viMP";
-    const AUTH_VERSION = "1.0"; // Adjust if you updated the version in your KeyAuth dashboard
+    const AUTH_VERSION = "1.0"; 
 
     window.onload = async () => {
-        // Load Banned Prefixes from Vault (localStorage)
         const savedBans = localStorage.getItem('lastLetter_BannedPrefixes');
         if (savedBans) {
             BANNED_PREFIXES = JSON.parse(savedBans);
             renderStash();
         }
 
-        // Auto-Login Check
         const savedKey = localStorage.getItem('lastLetter_AuthKey');
         if (savedKey) {
             document.getElementById('licenseKey').value = savedKey;
@@ -287,7 +287,6 @@
         btn.disabled = true;
 
         try {
-            // Init KeyAuth
             let initRes = await fetch(`https://keyauth.win/api/1.2/?name=${encodeURIComponent(AUTH_APP_NAME)}&ownerid=${AUTH_OWNER_ID}&type=init&ver=${AUTH_VERSION}`);
             let initData = await initRes.json();
             
@@ -297,15 +296,12 @@
                 btn.disabled = false; return;
             }
 
-            // Verify Key
             let licenseRes = await fetch(`https://keyauth.win/api/1.2/?name=${encodeURIComponent(AUTH_APP_NAME)}&ownerid=${AUTH_OWNER_ID}&type=license&key=${key}&sessionid=${initData.sessionid}`);
             let licenseData = await licenseRes.json();
 
             if (licenseData.success) {
                 statusBox.innerText = "ACCESS GRANTED. INITIALIZING ENGINE...";
                 statusBox.style.color = "#00ff88";
-                
-                // Save key to vault
                 localStorage.setItem('lastLetter_AuthKey', key);
                 
                 setTimeout(() => {
@@ -324,7 +320,11 @@
         }
     }
 
-    // --- GAME ENGINE BOOTUP ---
+    // --- GAME ENGINE BOOTUP & HASH MAPPING ---
+    let MAIN_LIST = [];
+    let TRAP_LIST = [];
+    let DICT_INDEX = {}; // THE SPEED FIX: Hash Map
+
     async function initGameEngine() {
         document.getElementById('loadingScreen').classList.remove('hidden');
         try {
@@ -334,6 +334,13 @@
             MAIN_LIST = [...new Set(((await mainRes.text()).toLowerCase().match(/[a-z]+/g) || []))];
             TRAP_LIST = [...new Set(((await trapRes.text()).toLowerCase().match(/[a-z]+/g) || []))];
             
+            // Build the Hash Map for lightning-fast lookups
+            MAIN_LIST.forEach(w => {
+                let first = w[0];
+                if(!DICT_INDEX[first]) DICT_INDEX[first] = [];
+                DICT_INDEX[first].push(w);
+            });
+
             document.getElementById('loadingScreen').classList.add('hidden');
             document.getElementById('menuScreen').classList.remove('hidden');
             
@@ -342,6 +349,13 @@
         } catch (e) {
             document.getElementById('loadStatus').innerText = "Failed to load databases.";
         }
+    }
+
+    // Helper: Super fast dictionary lookup
+    function getWordsStartingWith(prefix, usedSet) {
+        if (!prefix) return [];
+        let pool = DICT_INDEX[prefix[0]] || [];
+        return pool.filter(w => w.startsWith(prefix) && !usedSet.has(w));
     }
 
     // --- AUDIO SYSTEM ---
@@ -363,19 +377,10 @@
     function playCorrect() { playTone(600, 'square', 0.1, 0.1); setTimeout(()=>playTone(800, 'square', 0.15, 0.1), 100); }
     function playExplosion() { playTone(100, 'sawtooth', 0.6, 0.4); playTone(150, 'square', 0.4, 0.2); }
 
-    // --- DATA & CLOUD FETCH ---
-    const DB_URL = "https://raw.githubusercontent.com/blud47/word-data/refs/heads/main/keratofiles.txt";
-    const TRAP_URL = "https://raw.githubusercontent.com/blud47/word-data/main/traps%201.txt";
-    let MAIN_LIST = [];
-    let TRAP_LIST = [];
-    
     // --- GAME STATE ---
     let USED_WORDS = new Set();
-    let BANNED_PREFIXES = [];
-    
     let currentRoundHistory = []; 
     let fullMatchHistory = []; 
-    
     let settingsReturnScreen = 'menuScreen';
 
     let state = {
@@ -384,7 +389,7 @@
         shrinkStartTurn: 50, shrinkIntervalTurn: 1, botSpamSuffix: '', practiceWords: [] 
     };
 
-    // --- BANNED PREFIX STASH (WITH VAULT SAVING) ---
+    // --- BANNED PREFIX STASH ---
     function saveVault() { localStorage.setItem('lastLetter_BannedPrefixes', JSON.stringify(BANNED_PREFIXES)); }
 
     const stashInput = document.getElementById('stashInput');
@@ -424,96 +429,114 @@
     function openCustom(fromId) { settingsReturnScreen = fromId; document.getElementById(fromId).classList.add('hidden'); document.getElementById('customScreen').classList.remove('hidden'); }
     function closeCustom() { document.getElementById('customScreen').classList.add('hidden'); document.getElementById(settingsReturnScreen).classList.remove('hidden'); }
 
-    // --- CHESS ENGINE ANALYSIS ---
+    // --- ASYNC CHESS ENGINE ANALYSIS (SPEED FIX) ---
     function logHistory(player, word, promptReceived) { 
         currentRoundHistory.push({ player, word, promptReceived, turn: state.turnCount }); 
     }
 
-    function generateAnalysis() {
+    async function startAnalysis() {
         document.getElementById('gameOverScreen').classList.add('hidden');
         document.getElementById('analysisScreen').classList.remove('hidden');
         const container = document.getElementById('analysisContent');
-        container.innerHTML = "<div style='text-align:center; color:#555;'>Engine is analyzing the entire match...</div>";
+        const progress = document.getElementById('analysisProgress');
+        const backBtn = document.getElementById('analysisBackBtn');
+        
+        container.innerHTML = "";
+        backBtn.innerText = "WAIT...";
+        backBtn.disabled = true;
 
-        setTimeout(() => {
-            let html = "";
+        let totalRounds = fullMatchHistory.length;
+
+        for (let rIndex = 0; rIndex < totalRounds; rIndex++) {
+            let round = fullMatchHistory[rIndex];
             
-            fullMatchHistory.forEach((round, index) => {
-                html += `<div class="round-divider">ROUND ${index + 1}</div>`;
-                
-                let roundUsedSet = new Set();
-                let userMoves = round.moves.filter(h => h.player === 'user');
+            // Append Round Header directly to DOM
+            container.innerHTML += `<div class="round-divider">ROUND ${rIndex + 1}</div>`;
+            
+            let roundUsedSet = new Set();
+            let userMoves = round.moves.filter(h => h.player === 'user');
 
-                if (userMoves.length === 0 && round.died === 'user') {
-                    html += `<div class='move-card blunder'><div class='move-header'>Turn 1: Did not play</div><div class='move-eval'>Timer ran out before you could make a move.</div></div>`;
-                } else {
-                    round.moves.forEach(move => {
-                        if (move.player === 'user') {
-                            let targetLen = getTargetLength(move.turn);
+            if (userMoves.length === 0 && round.died === 'user') {
+                container.innerHTML += `<div class='move-card blunder'><div class='move-header'>Turn 1: Did not play</div><div class='move-eval'>Timer ran out before you could make a move.</div></div>`;
+            } else {
+                for (let i = 0; i < round.moves.length; i++) {
+                    let move = round.moves[i];
+
+                    if (move.player === 'user') {
+                        progress.innerText = `Analyzing Round ${rIndex + 1} | Turn ${move.turn}...`;
+                        
+                        // YIELD TO BROWSER TO PREVENT FREEZING
+                        await new Promise(resolve => setTimeout(resolve, 0));
+
+                        let targetLen = getTargetLength(move.turn);
+                        
+                        if (targetLen === 1) {
+                            container.innerHTML += `
+                                <div class='move-card book'>
+                                    <div class='move-header'><span>Turn ${move.turn}: ${move.word.toUpperCase()}</span><span style="color:#aaa;">📖 Book Move</span></div>
+                                    <div class='move-eval'>Standard 1-letter opening.</div>
+                                </div>`;
+                        } else {
+                            // Run the optimized deep analysis
+                            let analysis = analyzeMoveDeep(move.promptReceived, move.word, move.turn, roundUsedSet);
                             
-                            if (targetLen === 1) {
-                                html += `
-                                    <div class='move-card book'>
-                                        <div class='move-header'><span>Turn ${move.turn}: ${move.word.toUpperCase()}</span><span style="color:#aaa;">📖 Book Move</span></div>
-                                        <div class='move-eval'>Standard 1-letter opening.</div>
+                            let evalClass = analysis.rating === "Excellent" ? "excellent" : (analysis.rating === "Inaccuracy" ? "inaccuracy" : "blunder");
+                            let evalColor = analysis.rating === "Excellent" ? "#00ff88" : (analysis.rating === "Inaccuracy" ? "#ffcc00" : "#ff3366");
+                            let evalEmoji = analysis.rating === "Excellent" ? "🌟" : (analysis.rating === "Inaccuracy" ? "?! " : "?? ");
+
+                            let cardHtml = `
+                                <div class='move-card ${evalClass}'>
+                                    <div class='move-header'>
+                                        <span>Turn ${move.turn}: Played ${move.word.toUpperCase()}</span>
+                                        <span style="color:${evalColor};">${evalEmoji} ${analysis.rating}</span>
+                                    </div>
+                                    <div class='move-eval'>Given prefix <strong>${move.promptReceived.toUpperCase()}</strong>. Left bot with <strong>${analysis.botOptionsLeft}</strong> valid responses.</div>`;
+
+                            if (analysis.rating !== "Excellent" && analysis.bestLine) {
+                                cardHtml += `
+                                    <div class='forced-line'>
+                                        <span style="color:#00bfff; font-size:12px; display:block; margin-bottom:5px;">ENGINE SUGGESTION (Forced Combo):</span>
+                                        You play: <span class="word-highlight">${analysis.bestLine.myMove1}</span>
+                                        <span class="line-arrow">➔</span> Bot forced to play: <span style="color:#ffaa00;">${analysis.bestLine.botForcedReply}</span>
+                                        <span class="line-arrow">➔</span> Drops prefix [${analysis.bestLine.myNextPrompt}] 
+                                        <span class="line-arrow">➔</span> You counter: <span class="trap-highlight">${analysis.bestLine.myTrap}</span>
                                     </div>`;
-                            } else {
-                                let analysis = analyzeMoveDeep(move.promptReceived, move.word, move.turn, roundUsedSet);
-                                
-                                let evalClass = analysis.rating === "Excellent" ? "excellent" : (analysis.rating === "Inaccuracy" ? "inaccuracy" : "blunder");
-                                let evalColor = analysis.rating === "Excellent" ? "#00ff88" : (analysis.rating === "Inaccuracy" ? "#ffcc00" : "#ff3366");
-                                let evalEmoji = analysis.rating === "Excellent" ? "🌟" : (analysis.rating === "Inaccuracy" ? "?! " : "?? ");
-
-                                let cardHtml = `
-                                    <div class='move-card ${evalClass}'>
-                                        <div class='move-header'>
-                                            <span>Turn ${move.turn}: Played ${move.word.toUpperCase()}</span>
-                                            <span style="color:${evalColor};">${evalEmoji} ${analysis.rating}</span>
-                                        </div>
-                                        <div class='move-eval'>Given prefix <strong>${move.promptReceived.toUpperCase()}</strong>. Left bot with <strong>${analysis.botOptionsLeft}</strong> valid responses.</div>`;
-
-                                if (analysis.rating !== "Excellent" && analysis.bestLine) {
-                                    cardHtml += `
-                                        <div class='forced-line'>
-                                            <span style="color:#00bfff; font-size:12px; display:block; margin-bottom:5px;">ENGINE SUGGESTION (Forced Combo):</span>
-                                            You play: <span class="word-highlight">${analysis.bestLine.myMove1}</span>
-                                            <span class="line-arrow">➔</span> Bot forced to play: <span style="color:#ffaa00;">${analysis.bestLine.botForcedReply}</span>
-                                            <span class="line-arrow">➔</span> Drops prefix [${analysis.bestLine.myNextPrompt}] 
-                                            <span class="line-arrow">➔</span> You counter: <span class="trap-highlight">${analysis.bestLine.myTrap}</span>
-                                        </div>`;
-                                }
-                                cardHtml += `</div>`;
-                                html += cardHtml;
                             }
+                            cardHtml += `</div>`;
+                            container.innerHTML += cardHtml;
+                            container.scrollTop = container.scrollHeight; 
                         }
-                        roundUsedSet.add(move.word); 
-                    });
+                    }
+                    roundUsedSet.add(move.word); 
                 }
+            }
 
-                if (round.died === 'user') {
-                    html += `
-                        <div class='move-card blunder' style='margin-top: 15px; border-color: #ff3366;'>
-                            <div class='move-header'><span style="color:#ff3366;">💀 You Lost a Heart (Timer/Trapped)</span></div>
-                            <div class='move-eval'>You failed on prefix <strong>${round.prompt.toUpperCase()}</strong>.</div>
-                            <button class="btn btn-small" style="background:#ff3366; margin-top:10px; box-shadow: 0 4px 0 #cc0033;" onclick="addQuickBan(this, '${round.prompt}')">🚫 BAN PREFIX [${round.prompt.toUpperCase()}]</button>
-                        </div>`;
-                } else if (round.died === 'bot') {
-                    html += `
-                        <div class='move-card excellent' style='margin-top: 15px;'>
-                            <div class='move-header'><span style="color:#00ff88;">🏆 Bot Lost a Heart</span></div>
-                            <div class='move-eval'>Bot failed on prefix <strong>${round.prompt.toUpperCase()}</strong>.</div>
-                        </div>`;
-                }
-            });
-
-            container.innerHTML = html;
-            container.scrollTop = container.scrollHeight; 
-        }, 500); 
+            if (round.died === 'user') {
+                container.innerHTML += `
+                    <div class='move-card blunder' style='margin-top: 15px; border-color: #ff3366;'>
+                        <div class='move-header'><span style="color:#ff3366;">💀 You Lost a Heart (Timer/Trapped)</span></div>
+                        <div class='move-eval'>You failed on prefix <strong>${round.prompt.toUpperCase()}</strong>.</div>
+                        <button class="btn btn-small" style="background:#ff3366; margin-top:10px; box-shadow: 0 4px 0 #cc0033;" onclick="addQuickBan(this, '${round.prompt}')">🚫 BAN PREFIX [${round.prompt.toUpperCase()}]</button>
+                    </div>`;
+            } else if (round.died === 'bot') {
+                container.innerHTML += `
+                    <div class='move-card excellent' style='margin-top: 15px;'>
+                        <div class='move-header'><span style="color:#00ff88;">🏆 Bot Lost a Heart</span></div>
+                        <div class='move-eval'>Bot failed on prefix <strong>${round.prompt.toUpperCase()}</strong>.</div>
+                    </div>`;
+            }
+        }
+        
+        progress.innerText = "Analysis Complete!";
+        backBtn.innerText = "BACK";
+        backBtn.disabled = false;
+        container.scrollTop = container.scrollHeight; 
     }
 
     function closeAnalysis() {
         document.getElementById('analysisScreen').classList.add('hidden');
         document.getElementById('gameOverScreen').classList.remove('hidden');
+        document.getElementById('analysisProgress').innerText = "";
     }
 
     function getTargetLength(turns) {
@@ -525,30 +548,34 @@
         for (let len = Math.min(targetLength, word.length); len > 0; len--) {
             let suffix = word.slice(-len);
             if (BANNED_PREFIXES.includes(suffix)) continue;
-            if (MAIN_LIST.some(w => w.startsWith(suffix) && !usedSet.has(w))) return suffix;
+            // FAST LOOKUP
+            if (getWordsStartingWith(suffix, usedSet).length > 0) return suffix;
         }
         const alphabet = "abcdefghijklmnopqrstuvwxyz";
-        let available = alphabet.split('').filter(c => MAIN_LIST.some(w => w.startsWith(c) && !usedSet.has(w)));
+        let available = alphabet.split('').filter(c => getWordsStartingWith(c, usedSet).length > 0);
         return available.length > 0 ? available[0] : "a"; 
     }
 
     function analyzeMoveDeep(prompt, wordPlayed, turnNum, historicalUsedSet) {
         let actualPromptGivenToBot = calculateNextPromptSim(wordPlayed, turnNum, historicalUsedSet);
-        let botOptions = MAIN_LIST.filter(w => w.startsWith(actualPromptGivenToBot) && !historicalUsedSet.has(w));
+        
+        // FAST LOOKUP
+        let botOptions = getWordsStartingWith(actualPromptGivenToBot, historicalUsedSet);
         let actualOptionsCount = botOptions.length;
 
         let rating = "Blunder";
         if (actualOptionsCount <= 5) rating = "Excellent";
         else if (actualOptionsCount <= 50) rating = "Inaccuracy";
 
-        let allValidMyMoves = MAIN_LIST.filter(w => w.startsWith(prompt) && !historicalUsedSet.has(w));
+        // FAST LOOKUP
+        let allValidMyMoves = getWordsStartingWith(prompt, historicalUsedSet);
         let bestLine = null;
         let lowestBotOptions = 99999;
 
         // Pre-calculate exact branching factors to ensure phase-accurate traps
         let evaluatedMoves = allValidMyMoves.map(w => {
             let simPrompt = calculateNextPromptSim(w, turnNum, historicalUsedSet);
-            let opts = MAIN_LIST.filter(x => x.startsWith(simPrompt) && !historicalUsedSet.has(x)).length;
+            let opts = getWordsStartingWith(simPrompt, historicalUsedSet).length; // FAST LOOKUP
             let isTrap = TRAP_LIST.includes(w);
             return { word: w, opts: opts, isTrap: isTrap };
         });
@@ -558,7 +585,7 @@
             return (b.isTrap ? 1 : 0) - (a.isTrap ? 1 : 0);
         });
 
-        let searchPool = evaluatedMoves.slice(0, 15); 
+        let searchPool = evaluatedMoves.slice(0, 10); // Reduced depth slightly because hashmap is so efficient
 
         for (let moveObj of searchPool) {
             let testWord = moveObj.word;
@@ -571,7 +598,7 @@
                 simUsed.add(testWord);
 
                 let simBotPrompt = calculateNextPromptSim(testWord, turnNum, simUsed);
-                let simBotOptions = MAIN_LIST.filter(w => w.startsWith(simBotPrompt) && !simUsed.has(w));
+                let simBotOptions = getWordsStartingWith(simBotPrompt, simUsed);
 
                 if (simBotOptions.length > 0 && simBotOptions.length <= 3) {
                     simBotOptions.sort((a,b) => a.length - b.length);
@@ -579,7 +606,7 @@
                     simUsed.add(forcedBotWord);
                     
                     let simMyNextPrompt = calculateNextPromptSim(forcedBotWord, turnNum + 1, simUsed);
-                    let myNextOptions = MAIN_LIST.filter(w => w.startsWith(simMyNextPrompt) && !simUsed.has(w));
+                    let myNextOptions = getWordsStartingWith(simMyNextPrompt, simUsed);
                     
                     if (myNextOptions.length === 0) continue; 
 
@@ -588,7 +615,7 @@
                     
                     myNextOptions.forEach(nw => {
                          let nwPrompt = calculateNextPromptSim(nw, turnNum + 2, simUsed);
-                         let nwOpts = MAIN_LIST.filter(x => x.startsWith(nwPrompt) && !simUsed.has(x)).length;
+                         let nwOpts = getWordsStartingWith(nwPrompt, simUsed).length;
                          if (nwOpts < bestFollowUpOpts) {
                              bestFollowUpOpts = nwOpts;
                              bestFollowUp = nw;
@@ -826,7 +853,7 @@
         state.botTimeout = setTimeout(() => {
             if (state.mode !== 'playing' || state.turn !== 'bot') return;
 
-            let validWords = MAIN_LIST.filter(w => w.startsWith(state.prompt) && !USED_WORDS.has(w));
+            let validWords = getWordsStartingWith(state.prompt, USED_WORDS);
             
             if (validWords.length === 0) { 
                 bubble.innerText = "!?"; 
