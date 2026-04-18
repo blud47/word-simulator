@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Last Letter Simulator - Master Deployment Patch</title>
+    <title>Last Letter Simulator - Master Output</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
 
@@ -139,7 +139,7 @@
 
     <div id="loadingScreen" class="overlay hidden">
         <h1>Loading Dictionary...</h1>
-        <h3 id="loadStatus" style="color: #00bfff;">Building Engine Hash Maps...</h3>
+        <h3 id="loadStatus" style="color: #00bfff;">Connecting to Databanks...</h3>
     </div>
 
     <div id="menuScreen" class="overlay hidden">
@@ -189,7 +189,7 @@
                 <input type="text" id="custBotSpam" placeholder="e.g. X, VY, ER">
             </div>
             <div class="setting-group">
-                <label>🤖 Practice Word List (Comma separated)</label>
+                <label>🎯 Practice Word List (Comma separated)</label>
                 <textarea id="custPracticeWords" placeholder="e.g. HEAVY, GRAVY, SPEX..."></textarea>
             </div>
         </div>
@@ -229,7 +229,7 @@
     <div class="environment"><div class="carpet"></div></div>
 
     <div id="practiceSidebar" class="hidden">
-        <h4>🤖 PRACTICE LIST</h4>
+        <h4>🎯 PRACTICE LIST</h4>
         <div class="practice-list" id="practiceListContainer"></div>
     </div>
 
@@ -262,7 +262,7 @@
     const AUTH_VERSION = "1.0"; 
 
     window.onload = async () => {
-        // Load Banned Prefixes from Vault (localStorage)
+        // Load Banned Prefixes from Vault
         const savedBans = localStorage.getItem('lastLetter_BannedPrefixes');
         if (savedBans) {
             BANNED_PREFIXES = JSON.parse(savedBans);
@@ -289,7 +289,6 @@
         btn.disabled = true;
 
         try {
-            // DEDEPLOYMENT FIX: Removed nocache parameter because GitHub Raw blocks CORS requests with parameters when hosted on secure domains.
             let initRes = await fetch(`https://keyauth.win/api/1.2/?name=${encodeURIComponent(AUTH_APP_NAME)}&ownerid=${AUTH_OWNER_ID}&type=init&ver=${AUTH_VERSION}`);
             let initData = await initRes.json();
             
@@ -324,21 +323,21 @@
     }
 
     // --- GAME ENGINE BOOTUP & HASH MAPPING ---
-    const DB_URL = "https://raw.githubusercontent.com/blud47/word-data/main/keratofiles.txt";
-    const TRAP_URL = "https://raw.githubusercontent.com/blud47/word-data/main/traps%201.txt";
+    // DEPLOYMENT FIX: Using jsDelivr CDN to completely bypass GitHub CORS blocks
+    const DB_URL = "https://cdn.jsdelivr.net/gh/blud47/word-data@main/keratofiles.txt";
+    const TRAP_URL = "https://cdn.jsdelivr.net/gh/blud47/word-data@main/traps%201.txt";
     
     let MAIN_LIST = [];
     let TRAP_LIST = [];
-    let DICT_INDEX = {}; // THE SPEED FIX: Hash Map
-    let MAIN_SET = new Set(); // Speed lookup set
+    let DICT_INDEX = {}; 
+    let MAIN_SET = new Set(); 
     let TRAP_SET = new Set();
 
     async function initGameEngine() {
         document.getElementById('loadingScreen').classList.remove('hidden');
-        document.getElementById('loadStatus').innerText = "Downloading Dictionary...";
+        document.getElementById('loadStatus').innerText = "Downloading Databanks...";
         
         try {
-            // DEPLOYMENT FIX: Removed nocache t=... parameters. GitHub/Cloudflare often block query parameters on raw files due to security policies.
             const [mainRes, trapRes] = await Promise.all([ fetch(DB_URL), fetch(TRAP_URL) ]);
             
             if (!mainRes.ok) throw new Error(`Main Dict HTTP ${mainRes.status}`);
@@ -353,7 +352,6 @@
             MAIN_SET = new Set(MAIN_LIST);
             TRAP_SET = new Set(TRAP_LIST);
             
-            // Build the Hash Map for lightning-fast lookups
             DICT_INDEX = {};
             MAIN_LIST.forEach(w => {
                 let first = w[0];
@@ -367,13 +365,12 @@
             document.body.addEventListener('click', initAudio, { once: true });
             document.body.addEventListener('keydown', initAudio, { once: true });
         } catch (e) {
-            document.getElementById('loadStatus').innerText = "Failed to load databases. Verify your GitHub links or network connection.";
+            document.getElementById('loadStatus').innerText = "FATAL ERROR: " + e.message;
             document.getElementById('loadStatus').style.color = "#ff3333";
             console.error("Fetch Error:", e);
         }
     }
 
-    // Helper: Super fast dictionary lookup
     function getWordsStartingWith(prefix, usedSet) {
         if (!prefix) return [];
         let pool = DICT_INDEX[prefix[0]] || [];
@@ -384,14 +381,12 @@
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx;
     function initAudio() {
-        // SAFEGUARD: Browsers often block AudioContext initialization if not triggered strictly by a click.
         try {
             if (!audioCtx) audioCtx = new AudioContext();
             if (audioCtx.state === 'suspended') audioCtx.resume();
         } catch(e) {}
     }
     function playTone(freq, type, duration, vol=0.1) {
-        // SAFEGUARD: If AudioContext isn't initialized, do nothing rather than crash the JS thread.
         try {
             if(!audioCtx) return;
             const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
@@ -417,7 +412,7 @@
         shrinkStartTurn: 50, shrinkIntervalTurn: 1, botSpamSuffix: '', practiceWords: [] 
     };
 
-    // --- BANNED PREFIX STASH (WITH VAULT SAVING) ---
+    // --- BANNED PREFIX STASH ---
     function saveVault() { localStorage.setItem('lastLetter_BannedPrefixes', JSON.stringify(BANNED_PREFIXES)); }
 
     const stashInput = document.getElementById('stashInput');
@@ -477,8 +472,6 @@
 
         for (let rIndex = 0; rIndex < totalRounds; rIndex++) {
             let round = fullMatchHistory[rIndex];
-            
-            // Append Round Header directly to DOM
             container.innerHTML += `<div class="round-divider">ROUND ${rIndex + 1}</div>`;
             
             let roundUsedSet = new Set();
@@ -493,7 +486,7 @@
                     if (move.player === 'user') {
                         progress.innerText = `Analyzing Round ${rIndex + 1} | Turn ${move.turn}...`;
                         
-                        // YIELD TO BROWSER TO PREVENT FREEZING
+                        // Yield to browser to prevent freezing
                         await new Promise(resolve => setTimeout(resolve, 0));
 
                         let targetLen = getTargetLength(move.turn);
@@ -505,7 +498,6 @@
                                     <div class='move-eval'>Standard 1-letter opening.</div>
                                 </div>`;
                         } else {
-                            // Run the optimized deep analysis
                             let analysis = analyzeMoveDeep(move.promptReceived, move.word, move.turn, roundUsedSet);
                             
                             let evalClass = analysis.rating === "Excellent" ? "excellent" : (analysis.rating === "Inaccuracy" ? "inaccuracy" : "blunder");
@@ -576,7 +568,6 @@
         for (let len = Math.min(targetLength, word.length); len > 0; len--) {
             let suffix = word.slice(-len);
             if (BANNED_PREFIXES.includes(suffix)) continue;
-            // FAST LOOKUP
             if (getWordsStartingWith(suffix, usedSet).length > 0) return suffix;
         }
         const alphabet = "abcdefghijklmnopqrstuvwxyz";
@@ -587,7 +578,6 @@
     function analyzeMoveDeep(prompt, wordPlayed, turnNum, historicalUsedSet) {
         let actualPromptGivenToBot = calculateNextPromptSim(wordPlayed, turnNum, historicalUsedSet);
         
-        // FAST LOOKUP
         let botOptions = getWordsStartingWith(actualPromptGivenToBot, historicalUsedSet);
         let actualOptionsCount = botOptions.length;
 
@@ -595,15 +585,13 @@
         if (actualOptionsCount <= 5) rating = "Excellent";
         else if (actualOptionsCount <= 50) rating = "Inaccuracy";
 
-        // FAST LOOKUP
         let allValidMyMoves = getWordsStartingWith(prompt, historicalUsedSet);
         let bestLine = null;
         let lowestBotOptions = 99999;
 
-        // Pre-calculate exact branching factors to ensure phase-accurate traps
         let evaluatedMoves = allValidMyMoves.map(w => {
             let simPrompt = calculateNextPromptSim(w, turnNum, historicalUsedSet);
-            let opts = getWordsStartingWith(simPrompt, historicalUsedSet).length; // FAST LOOKUP
+            let opts = getWordsStartingWith(simPrompt, historicalUsedSet).length; 
             let isTrap = TRAP_SET.has(w);
             return { word: w, opts: opts, isTrap: isTrap };
         });
@@ -613,7 +601,7 @@
             return (b.isTrap ? 1 : 0) - (a.isTrap ? 1 : 0);
         });
 
-        let searchPool = evaluatedMoves.slice(0, 10); // Reduced depth slightly because hashmap is so efficient
+        let searchPool = evaluatedMoves.slice(0, 10); 
 
         for (let moveObj of searchPool) {
             let testWord = moveObj.word;
@@ -799,18 +787,15 @@
         let prefix = state.prompt.toUpperCase(); 
         let userPart = state.userTyped.toUpperCase();
         
-        if (userPart.startsWith(prefix)) {
-            userPart = userPart.slice(prefix.length);
-        }
+        if (userPart.startsWith(prefix)) { userPart = userPart.slice(prefix.length); }
         
         bubble.innerHTML = `<span class="prefix-text">${prefix}</span>${userPart}`;
         bubble.classList.remove('hidden');
     }
 
-    // --- TURN HANDLING ---
+    // --- TURN HANDLING (WITH EXPLICIT REJECTION UI) ---
     function submitWord(word) {
         if (!word.startsWith(state.prompt)) return "PREFIX_MISMATCH";
-        // DEDEPLOYMENT FIX: O(1) Lookup Set ensures massive dictionary checks never stall input.
         if (!MAIN_SET.has(word)) return "NOT_IN_DICTIONARY";
         if (USED_WORDS.has(word)) return "ALREADY_USED";
         
@@ -839,7 +824,7 @@
         startTimer();
     }
 
-    // --- SMART INPUT CAPTURE (REJECTION UI ADDED) ---
+    // --- SMART INPUT CAPTURE ---
     document.addEventListener('keydown', (e) => {
         if(document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return; 
 
@@ -851,34 +836,44 @@
         
         if (e.key === 'Backspace') {
             if (state.userTyped.length > 0) state.userTyped = state.userTyped.slice(0, -1);
+            if (state.turn === 'user' && !bubble.innerHTML.includes('ff3366')) updateTypingBubble();
         } else if (e.key === 'Enter') {
-            let attempt = state.userTyped.toLowerCase();
-            
-            if (!attempt.startsWith(state.prompt)) { attempt = state.prompt + attempt; }
-            
-            if (attempt.length >= state.prompt.length && attempt.length > 0) {
-                let result = submitWord(attempt);
-                if (result !== "SUCCESS") {
-                    state.userTyped = ''; 
-                    bubble.style.animation = 'none'; bubble.offsetHeight;
-                    bubble.style.animation = 'errorShake 0.3s'; bubble.style.borderColor = '#ff3366';
+            try {
+                let attempt = state.userTyped.toLowerCase();
+                if (!attempt.startsWith(state.prompt)) { attempt = state.prompt + attempt; }
+                
+                if (attempt.length >= state.prompt.length && attempt.length > 0) {
+                    let result = submitWord(attempt);
                     
-                    // DEPLOYMENT FIX: Direct UI feedback for ghost rejections
-                    let safeMsg = result.replace(/_/g, ' ');
-                    bubble.innerHTML = `<span style="color:#ff3366; font-size:16px;">${safeMsg}</span>`;
-                    
-                    setTimeout(() => { 
-                        bubble.style.borderColor = '#000'; 
-                        if(state.turn === 'user') updateTypingBubble();
-                    }, 600);
+                    if (result !== "SUCCESS") {
+                        // DEPLOYMENT FIX: Explicitly show WHY it was rejected so it doesn't look frozen.
+                        state.userTyped = ''; 
+                        bubble.style.animation = 'none'; bubble.offsetHeight;
+                        bubble.style.animation = 'errorShake 0.3s'; bubble.style.borderColor = '#ff3366';
+                        
+                        let safeMsg = result.replace(/_/g, ' ');
+                        bubble.innerHTML = `<span style="color:#ff3366; font-size:16px;">${safeMsg}</span>`;
+                        
+                        setTimeout(() => { 
+                            bubble.style.borderColor = '#000'; 
+                            if (state.turn === 'user') updateTypingBubble(); 
+                        }, 600);
+                    } else {
+                        // Success! Forcefully clear bubble state immediately to prevent ghosting.
+                        state.userTyped = '';
+                        bubble.classList.add('hidden');
+                    }
                 }
+            } catch(err) {
+                // Failsafe in case of math error
+                console.error("Input Crash:", err);
+                state.userTyped = '';
+                updateTypingBubble();
             }
         } else if (/^[a-zA-Z]$/.test(e.key)) {
             state.userTyped += e.key.toLowerCase(); bubble.style.borderColor = '#000'; 
+            if (state.turn === 'user' && !bubble.innerHTML.includes('ff3366')) updateTypingBubble();
         }
-        
-        // DEPLOYMENT FIX: Only update if not showing an error state
-        if (state.turn === 'user' && !bubble.innerHTML.includes('ff3366')) updateTypingBubble();
     });
 
     // --- BOT AI (Safeguarded) ---
@@ -894,7 +889,6 @@
         state.botTimeout = setTimeout(() => {
             if (state.mode !== 'playing' || state.turn !== 'bot') return;
 
-            // SAFEGUARD: The bot AI might crash if DICT_INDEX is corrupted or dictionary loading failed partially. Wrap in try/catch to force a safe move rather than freezing.
             try {
                 let validWords = getWordsStartingWith(state.prompt, USED_WORDS);
                 
@@ -917,7 +911,6 @@
                     if (diff === 'easy') {
                         chosenWord = validWords[Math.floor(Math.random() * validWords.length)];
                     } else {
-                        // DEDEPLOYMENT FIX: Set lookup ensures super fast trap scanning
                         let traps = validWords.filter(w => TRAP_SET.has(w));
                         if (traps.length > 0) {
                             chosenWord = traps[Math.floor(Math.random() * traps.length)]; 
@@ -930,12 +923,18 @@
 
                 bubble.style.color = "#000";
                 bubble.innerText = chosenWord.toUpperCase();
-                setTimeout(() => { if (state.mode === 'playing' && state.turn === 'bot') submitWord(chosenWord); }, 300);
+                
+                setTimeout(() => { 
+                    if (state.mode === 'playing' && state.turn === 'bot') {
+                        let res = submitWord(chosenWord);
+                        if (res !== "SUCCESS") state.timer = 0.5; // Kill bot if its own logic fails
+                    }
+                }, 300);
             } catch(e) {
                 console.error("Bot Engine Crash:", e);
-                // SAFEGUARD FALLBACK: If AI fails, bot plays the first valid word rather than freezing.
+                // SAFEGUARD FALLBACK: Prevent freezing by forcing first available word
                 let fallbackWords = getWordsStartingWith(state.prompt, USED_WORDS);
-                if (fallbackWords.length > 0) submitWord(fallbackWords[0]);
+                if (fallbackWords.length > 0) { submitWord(fallbackWords[0]); } else { state.timer = 0.5; }
             }
         }, thinkTime);
     }
