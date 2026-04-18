@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Last Letter Simulator - Secure Engine Edition</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
+
+        body {
+            margin: 0; padding: 0; height: 100vh; overflow: hidden;
+            background: linear-gradient(to bottom, #1e3c72, #2a5298);
+            font-family: 'Fredoka One', cursive, sans-serif;
+            color: #fff; user-select: none;
+        }
+
+        /* UI Overlays */
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100;
+        }
+        #deathLogScreen, #settingsScreen, #customScreen, #analysisScreen { z-index: 150; background: rgba(0, 0, 0, 0.95); }
+        #authScreen { z-index: 9999; background: rgba(0, 0, 0, 0.95); backdrop-filter: blur(15px); }
+        .hidden { display: none !important; }
+
+        h1 { font-size: 48px; margin-bottom: 10px; text-shadow: 0 4px 0 #000; letter-spacing: 2px;}
+        h3 { font-size: 24px; color: #ffcc00; margin-top: 0; text-shadow: 0 2px 0 #000;}
+
+        .btn {
+            background: #00ff88; border: 4px solid #fff; padding: 15px 40px;
+            font-size: 24px; font-family: 'Fredoka One'; color: #000;
+            border-radius: 12px; cursor: pointer; text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+            box-shadow: 0 6px 0 #00b35f; transition: 0.1s; margin: 10px; text-transform: uppercase;
+        }
+        .btn:active { transform: translateY(6px); box-shadow: 0 0 0 #00b35f; }
+        .btn:disabled { background: #555; box-shadow: 0 6px 0 #222; color: #aaa; cursor: not-allowed; }
+        .btn-small { padding: 10px 20px; font-size: 18px; margin: 5px; }
+        
+        /* Settings & Custom UI */
+        .settings-container, .custom-container {
+            width: 80%; max-width: 600px; background: #222; border: 4px solid #555;
+            border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 20px; margin-bottom: 20px; max-height: 70vh; overflow-y: auto;
+        }
+        .custom-container { border-color: #b026ff; }
+        
+        .setting-group { display: flex; flex-direction: column; gap: 8px; }
+        .setting-row { display: flex; gap: 10px; }
+        .setting-row > div { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+        .setting-group label { font-size: 14px; color: #aaa; text-transform: uppercase; }
+        .setting-group select, .setting-group input, .setting-group textarea {
+            background: #111; color: #00ff88; border: 2px solid #444;
+            padding: 10px; border-radius: 6px; font-family: 'Fredoka One'; font-size: 16px; width: 100%; box-sizing: border-box; outline: none;
+        }
+        .setting-group input:focus, .setting-group textarea:focus { border-color: #00bfff; }
+        .setting-group textarea { resize: vertical; min-height: 80px; font-family: 'Segoe UI', Arial, sans-serif; font-weight: bold;}
+
+        /* Banned Prefix Stash */
+        .stash-box { background: #111; border: 2px dashed #444; border-radius: 6px; min-height: 60px; padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; }
+        .banned-tag { background: #ff3366; color: #fff; padding: 5px 10px; border-radius: 4px; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; font-family: 'Segoe UI', sans-serif; font-weight: bold; box-shadow: 0 2px 0 #cc0033; text-transform: uppercase; }
+        .banned-tag span { cursor: pointer; color: #ffcc00; transition: 0.2s; }
+        .banned-tag span:hover { color: #fff; transform: scale(1.2); }
+
+        /* Practice Sidebar UI */
+        #practiceSidebar { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); width: 200px; background: rgba(0, 0, 0, 0.7); border: 2px solid #b026ff; border-radius: 12px; padding: 15px; box-sizing: border-box; backdrop-filter: blur(5px); z-index: 10; max-height: 80vh; display: flex; flex-direction: column; }
+        #practiceSidebar h4 { margin: 0 0 10px 0; color: #b026ff; text-align: center; font-size: 16px; border-bottom: 2px solid #555; padding-bottom: 5px; }
+        .practice-list { display: flex; flex-direction: column; gap: 5px; overflow-y: auto; flex: 1; padding-right: 5px;}
+        .practice-word { background: rgba(255,255,255,0.1); padding: 8px; border-radius: 4px; font-size: 14px; text-align: center; text-transform: uppercase; transition: 0.3s; }
+        .practice-word.hit { background: rgba(0, 255, 136, 0.2); border-left: 4px solid #00ff88; color: #00ff88; text-decoration: line-through; }
+
+        /* Death Log & Chess Analysis UI */
+        .log-container { width: 80%; max-width: 800px; height: 60%; background: #111; border: 4px solid #ff3366; border-radius: 12px; padding: 20px; overflow-y: auto; margin-bottom: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .analysis-container { border-color: #00bfff; }
+        
+        .round-divider { color: #fff; text-align: center; margin: 20px 0 10px 0; border-bottom: 2px solid #555; padding-bottom: 5px; font-family: 'Fredoka One'; font-size: 20px; letter-spacing: 1px;}
+        .move-card { background: #222; border-left: 5px solid #555; padding: 15px; border-radius: 8px; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; gap: 8px;}
+        .move-card.book { border-left-color: #aaa; opacity: 0.8; }
+        .move-card.excellent { border-left-color: #00ff88; background: rgba(0, 255, 136, 0.05); }
+        .move-card.inaccuracy { border-left-color: #ffcc00; background: rgba(255, 204, 0, 0.05); }
+        .move-card.blunder { border-left-color: #ff3366; background: rgba(255, 51, 102, 0.05); }
+        
+        .move-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 18px; color: #fff; font-family: 'Fredoka One';}
+        .move-eval { font-size: 14px; color: #aaa; font-family: 'Segoe UI'; }
+        .forced-line { background: #000; padding: 12px; border-radius: 6px; font-size: 14px; border: 1px dashed #00bfff; margin-top: 5px;}
+        .line-arrow { color: #555; margin: 0 5px; font-weight: bold;}
+        .word-highlight { color: #00bfff; font-weight: bold; text-transform: uppercase; }
+        .trap-highlight { color: #ffcc00; font-weight: bold; text-transform: uppercase; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+
+        /* Game Elements */
+        .environment { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; perspective: 1000px; }
+        .carpet { position: absolute; width: 600px; height: 600px; background: #cc0000; border-radius: 50%; border: 15px solid #880000; transform: rotateX(60deg) translateY(200px); box-shadow: inset 0 0 50px rgba(0,0,0,0.5); }
+        .hud { position: absolute; width: 100%; height: 100%; pointer-events: none; }
+        .player-area { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+        .bot-area { top: 30px; }
+        .user-area { bottom: 30px; }
+        
+        .avatar { width: 80px; height: 80px; background: #fff; border-radius: 12px; border: 4px solid #000; margin-bottom: 10px; display: flex; justify-content: center; align-items: center; font-size: 40px; box-shadow: 0 8px 0 rgba(0,0,0,0.3);}
+        .bot-avatar { background: #ffaa00; }
+        .user-avatar { background: #00bfff; }
+
+        .hearts { display: flex; gap: 5px; }
+        .heart { color: #ff3333; font-size: 28px; text-shadow: 0 2px 0 #000; transition: 0.3s; }
+        .heart.lost { filter: grayscale(100%) opacity(0.3); transform: scale(0.8); }
+
+        .bomb-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; }
+        .prompt-box { display: flex; gap: 5px; margin-bottom: 20px; animation: bounceIn 0.3s ease-out; }
+        .letter-tile { background: #fff; color: #000; border: 4px solid #ccc; font-size: 48px; width: 60px; height: 60px; display: flex; justify-content: center; align-items: center; border-radius: 8px; box-shadow: 0 6px 0 #999; }
+        
+        .bomb { width: 100px; height: 100px; background: #111; border-radius: 50%; border: 6px solid #444; display: flex; justify-content: center; align-items: center; font-size: 28px; color: #ffcc00; text-shadow: 0 2px 0 #000; box-shadow: 0 10px 20px rgba(0,0,0,0.5), inset -10px -10px 20px rgba(0,0,0,0.5); transition: transform 0.1s; }
+        .bomb.ticking { animation: pulse 0.5s infinite alternate; }
+        .bomb.exploding { background: #ff3333; border-color: #fff; color: #fff; animation: shake 0.1s infinite; }
+
+        /* Typing Area */
+        .typing-bubble { background: rgba(255,255,255,0.9); color: #000; padding: 10px 20px; border-radius: 20px; font-size: 24px; border: 3px solid #000; margin-bottom: 15px; min-width: 50px; text-align: center; box-shadow: 0 4px 0 rgba(0,0,0,0.2); text-transform: uppercase; transition: border-color 0.2s, color 0.2s;}
+        .bot-typing { color: #888; font-size: 18px; }
+        .prefix-text { color: #00bfff; }
+
+        @keyframes bounceIn { 0% { transform: scale(0); } 80% { transform: scale(1.2); } 100% { transform: scale(1); } }
+        @keyframes pulse { from { transform: scale(1); box-shadow: 0 0 10px #ff3333; } to { transform: scale(1.05); box-shadow: 0 0 30px #ff3333; } }
+        @keyframes shake { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } }
+        @keyframes errorShake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } 100% { transform: translateX(0); } }
+        
+        .danger-text { color: #ff3333 !important; animation: pulse 0.5s infinite alternate; }
+        .controls-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); font-family: Arial; font-size: 12px; color: rgba(255,255,255,0.7); pointer-events: none;}
+    </style>
+</head>
+<body>
+
+    <div id="authScreen" class="overlay">
+        <h1 style="color:#00bfff; text-shadow: 0 4px 0 #000;">SECURITY VAULT</h1>
+        <h3 style="color:#aaa; font-size:16px;">Enter KeyAuth License to Unlock Engine</h3>
+        <input type="password" id="licenseKey" placeholder="XXXXX-XXXXX-XXXXX" autocomplete="off" style="padding: 15px; font-size: 20px; text-align: center; border-radius: 8px; border: 3px solid #555; background: #111; color: #00ff88; margin-bottom: 20px; width: 350px; font-family: 'Fredoka One', sans-serif;">
+        <button class="btn" style="background:#ff3366; box-shadow: 0 6px 0 #cc0033;" onclick="verifyKey()" id="authBtn">UNLOCK ENGINE</button>
+        <div id="authStatus" style="margin-top: 15px; color: #ff3333; font-family: Arial; font-size: 14px; font-weight:bold;"></div>
+    </div>
+
+    <div id="loadingScreen" class="overlay hidden">
+        <h1>Loading Dictionary...</h1>
+        <h3 id="loadStatus">Fetching data & traps...</h3>
+    </div>
+
+    <div id="menuScreen" class="overlay hidden">
+        <h1>LAST LETTER</h1>
+        <h3>Word Chain Simulator</h3>
+        <button class="btn" onclick="startGame('standard')">PLAY GAME</button>
+        <button class="btn" style="background:#00bfff; box-shadow: 0 6px 0 #0078d4;" onclick="openSettings('menuScreen')">⚙️ SETTINGS</button>
+        <button class="btn" style="background:#b026ff; box-shadow: 0 6px 0 #7300b3; margin-top: 20px;" onclick="openCustom('menuScreen')">🛠️ CUSTOM GAME</button>
+    </div>
+
+    <div id="settingsScreen" class="overlay hidden">
+        <h1 style="color:#00bfff;">⚙️ SETTINGS</h1>
+        <div class="settings-container">
+            <div class="setting-group">
+                <label>🤖 Bot Difficulty</label>
+                <select id="botDifficulty">
+                    <option value="easy">Easy (Random Words)</option>
+                    <option value="hard">Hard (Cloud Trap Engine)</option>
+                </select>
+            </div>
+            <div class="setting-group">
+                <label>🚫 Banned Prefix Stash (Vault Saved)</label>
+                <input type="text" id="stashInput" placeholder="Type prefix & press Enter..." autocomplete="off">
+                <div class="stash-box" id="stashBox">
+                    <span style="color:#666; font-size:12px; margin-top:5px; font-family:Arial;">No bans active.</span>
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-small" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;" onclick="closeSettings()">BACK</button>
+    </div>
+
+    <div id="customScreen" class="overlay hidden">
+        <h1 style="color:#b026ff;">🛠️ CUSTOM GAME</h1>
+        <div class="custom-container">
+            <div class="setting-row">
+                <div class="setting-group">
+                    <label>⏱️ Time Shrink Starts At (Turn)</label>
+                    <input type="number" id="custShrinkStart" value="50" min="1">
+                </div>
+                <div class="setting-group">
+                    <label>📉 Shrinks Every X Turns</label>
+                    <input type="number" id="custShrinkInt" value="1" min="1">
+                </div>
+            </div>
+            <div class="setting-group">
+                <label>🤖 Force Bot Suffix Spam</label>
+                <input type="text" id="custBotSpam" placeholder="e.g. X, VY, ER">
+            </div>
+            <div class="setting-group">
+                <label>🎯 Practice Word List (Comma separated)</label>
+                <textarea id="custPracticeWords" placeholder="e.g. HEAVY, GRAVY, SPEX..."></textarea>
+            </div>
+        </div>
+        <div>
+            <button class="btn btn-small" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;" onclick="closeCustom()">CANCEL</button>
+            <button class="btn btn-small" style="background:#b026ff; box-shadow: 0 6px 0 #7300b3;" onclick="startGame('custom')">START CUSTOM</button>
+        </div>
+    </div>
+
+    <div id="pauseScreen" class="overlay hidden">
+        <h1>PAUSED</h1>
+        <button class="btn" onclick="resumeGame()">RESUME</button>
+        <button class="btn" style="background:#00bfff; box-shadow: 0 6px 0 #0078d4;" onclick="openSettings('pauseScreen')">⚙️ SETTINGS</button>
+        <button class="btn" onclick="quitGame()" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;">QUIT TO MENU</button>
+    </div>
+
+    <div id="gameOverScreen" class="overlay hidden">
+        <h1 id="goTitle">GAME OVER</h1>
+        <h3 id="goStats" style="color:#fff">Match Concluded</h3>
+        <button class="btn" id="replayBtn" onclick="startGame('standard')">PLAY AGAIN</button>
+        <button class="btn" style="background:#00bfff; box-shadow: 0 6px 0 #0078d4;" onclick="generateAnalysis()">🔍 ENGINE ANALYSIS</button>
+        <button class="btn" onclick="quitGame()" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;">MAIN MENU</button>
+    </div>
+
+    <div id="analysisScreen" class="overlay hidden">
+        <h1 style="color:#00bfff; text-shadow: 0 2px 0 #000;">🔍 ENGINE ANALYSIS</h1>
+        <div style="display:flex; width: 80%; max-width: 800px; gap:10px; margin-bottom:10px;">
+            <input type="text" id="analysisStashInput" placeholder="Manually ban a prefix here..." style="flex:1; background: #111; color: #00ff88; border: 2px solid #444; padding: 10px; border-radius: 6px; font-family: 'Fredoka One'; font-size: 16px; outline: none;">
+            <button class="btn btn-small" style="margin:0; background:#ffaa00; box-shadow: 0 4px 0 #cc8800;" onclick="submitAnalysisBan()">BAN</button>
+        </div>
+        <div class="log-container analysis-container" id="analysisContent">
+            </div>
+        <button class="btn" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;" onclick="closeAnalysis()">BACK</button>
+    </div>
+
+    <div class="environment"><div class="carpet"></div></div>
+
+    <div id="practiceSidebar" class="hidden">
+        <h4>🎯 PRACTICE LIST</h4>
+        <div class="practice-list" id="practiceListContainer"></div>
+    </div>
+
+    <div class="hud">
+        <div class="player-area bot-area">
+            <div id="botTyping" class="typing-bubble hidden bot-typing">...</div>
+            <div class="avatar bot-avatar">🤖</div>
+            <div class="hearts" id="botHearts"><span class="heart">❤️</span><span class="heart">❤️</span></div>
+        </div>
+
+        <div class="bomb-container">
+            <div class="prompt-box" id="promptBox"></div>
+            <div class="bomb" id="bombDisplay">15.0s</div>
+            <div style="margin-top: 10px; font-family: Arial; font-size: 14px; font-weight: bold; color: #fff; text-shadow: 0 2px 0 #000; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px;" id="turnCounter">TURN: 1</div>
+        </div>
+
+        <div class="player-area user-area">
+            <div id="userTyping" class="typing-bubble hidden"></div>
+            <div class="avatar user-avatar">😎</div>
+            <div class="hearts" id="userHearts"><span class="heart">❤️</span><span class="heart">❤️</span></div>
+        </div>
+    </div>
+
+    <div class="controls-hint">Type on keyboard | 'Enter' to submit | 'Escape' to Pause</div>
+
+<script>
+    // --- KEYAUTH SECURITY VAULT ---
+    const AUTH_APP_NAME = "Axeljohngarganera's Application";
+    const AUTH_OWNER_ID = "gtXnY2viMP";
+    const AUTH_VERSION = "1.0"; // Adjust if you updated the version in your KeyAuth dashboard
+
+    window.onload = async () => {
+        // Load Banned Prefixes from Vault (localStorage)
+        const savedBans = localStorage.getItem('lastLetter_BannedPrefixes');
+        if (savedBans) {
+            BANNED_PREFIXES = JSON.parse(savedBans);
+            renderStash();
+        }
+
+        // Auto-Login Check
+        const savedKey = localStorage.getItem('lastLetter_AuthKey');
+        if (savedKey) {
+            document.getElementById('licenseKey').value = savedKey;
+            verifyKey();
+        }
+    };
+
+    async function verifyKey() {
+        const key = document.getElementById('licenseKey').value.trim();
+        const statusBox = document.getElementById('authStatus');
+        const btn = document.getElementById('authBtn');
+        
+        if (!key) { statusBox.innerText = "Please enter a valid license key."; return; }
+        
+        statusBox.innerText = "Authenticating with KeyAuth Servers...";
+        statusBox.style.color = "#ffcc00";
+        btn.disabled = true;
+
+        try {
+            // Init KeyAuth
+            let initRes = await fetch(`https://keyauth.win/api/1.2/?name=${encodeURIComponent(AUTH_APP_NAME)}&ownerid=${AUTH_OWNER_ID}&type=init&ver=${AUTH_VERSION}`);
+            let initData = await initRes.json();
+            
+            if (!initData.success) {
+                statusBox.innerText = "Connection Failed: " + initData.message;
+                statusBox.style.color = "#ff3333";
+                btn.disabled = false; return;
+            }
+
+            // Verify Key
+            let licenseRes = await fetch(`https://keyauth.win/api/1.2/?name=${encodeURIComponent(AUTH_APP_NAME)}&ownerid=${AUTH_OWNER_ID}&type=license&key=${key}&sessionid=${initData.sessionid}`);
+            let licenseData = await licenseRes.json();
+
+            if (licenseData.success) {
+                statusBox.innerText = "ACCESS GRANTED. INITIALIZING ENGINE...";
+                statusBox.style.color = "#00ff88";
+                
+                // Save key to vault
+                localStorage.setItem('lastLetter_AuthKey', key);
+                
+                setTimeout(() => {
+                    document.getElementById('authScreen').classList.add('hidden');
+                    initGameEngine();
+                }, 1000);
+            } else {
+                statusBox.innerText = "INVALID KEY: " + licenseData.message;
+                statusBox.style.color = "#ff3333";
+                btn.disabled = false;
+            }
+        } catch (err) {
+            statusBox.innerText = "Network Error. Could not reach authentication servers.";
+            statusBox.style.color = "#ff3333";
+            btn.disabled = false;
+        }
+    }
+
+    // --- GAME ENGINE BOOTUP ---
+    async function initGameEngine() {
+        document.getElementById('loadingScreen').classList.remove('hidden');
+        try {
+            const nocache = "?t=" + new Date().getTime();
+            const [mainRes, trapRes] = await Promise.all([ fetch(DB_URL + nocache), fetch(TRAP_URL + nocache) ]);
+            
+            MAIN_LIST = [...new Set(((await mainRes.text()).toLowerCase().match(/[a-z]+/g) || []))];
+            TRAP_LIST = [...new Set(((await trapRes.text()).toLowerCase().match(/[a-z]+/g) || []))];
+            
+            document.getElementById('loadingScreen').classList.add('hidden');
+            document.getElementById('menuScreen').classList.remove('hidden');
+            
+            document.body.addEventListener('click', initAudio, { once: true });
+            document.body.addEventListener('keydown', initAudio, { once: true });
+        } catch (e) {
+            document.getElementById('loadStatus').innerText = "Failed to load databases.";
+        }
+    }
+
+    // --- AUDIO SYSTEM ---
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+    function initAudio() {
+        if (!audioCtx) audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+    function playTone(freq, type, duration, vol=0.1) {
+        if(!audioCtx) return;
+        const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+        osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + duration);
+    }
+    function playTick() { playTone(800, 'sine', 0.05, 0.05); }
+    function playCorrect() { playTone(600, 'square', 0.1, 0.1); setTimeout(()=>playTone(800, 'square', 0.15, 0.1), 100); }
+    function playExplosion() { playTone(100, 'sawtooth', 0.6, 0.4); playTone(150, 'square', 0.4, 0.2); }
+
+    // --- DATA & CLOUD FETCH ---
+    const DB_URL = "https://raw.githubusercontent.com/blud47/word-data/refs/heads/main/keratofiles.txt";
+    const TRAP_URL = "https://raw.githubusercontent.com/blud47/word-data/main/traps%201.txt";
+    let MAIN_LIST = [];
+    let TRAP_LIST = [];
+    
+    // --- GAME STATE ---
+    let USED_WORDS = new Set();
+    let BANNED_PREFIXES = [];
+    
+    let currentRoundHistory = []; 
+    let fullMatchHistory = []; 
+    
+    let settingsReturnScreen = 'menuScreen';
+
+    let state = {
+        mode: 'menu', gameType: 'standard', turn: 'user', turnCount: 1, prompt: '', userTyped: '', lastBotWord: '',
+        userLives: 2, botLives: 2, timer: 15.0, currentMaxTime: 15.0, intervalId: null, botTimeout: null,
+        shrinkStartTurn: 50, shrinkIntervalTurn: 1, botSpamSuffix: '', practiceWords: [] 
+    };
+
+    // --- BANNED PREFIX STASH (WITH VAULT SAVING) ---
+    function saveVault() { localStorage.setItem('lastLetter_BannedPrefixes', JSON.stringify(BANNED_PREFIXES)); }
+
+    const stashInput = document.getElementById('stashInput');
+    stashInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            let val = this.value.trim().toLowerCase().replace(/[^a-z]/g, '');
+            if (val && !BANNED_PREFIXES.includes(val)) { BANNED_PREFIXES.push(val); renderStash(); saveVault(); }
+            this.value = '';
+        }
+    });
+    
+    function submitAnalysisBan() {
+        let inp = document.getElementById('analysisStashInput');
+        let val = inp.value.trim().toLowerCase().replace(/[^a-z]/g, '');
+        if (val && !BANNED_PREFIXES.includes(val)) { BANNED_PREFIXES.push(val); renderStash(); saveVault(); }
+        inp.value = ''; inp.placeholder = "Added to Vault!";
+        setTimeout(() => inp.placeholder = "Manually ban a prefix here...", 1000);
+    }
+    
+    function addQuickBan(btn, prefix) {
+        let val = prefix.trim().toLowerCase().replace(/[^a-z]/g, '');
+        if (val && !BANNED_PREFIXES.includes(val)) { BANNED_PREFIXES.push(val); renderStash(); saveVault(); }
+        btn.innerText = "🚫 VAULT SAVED!";
+        btn.style.background = "#444"; btn.style.boxShadow = "0 4px 0 #222"; btn.style.color = "#aaa"; btn.disabled = true;
+    }
+
+    function removeBan(prefix) { BANNED_PREFIXES = BANNED_PREFIXES.filter(p => p !== prefix); renderStash(); saveVault(); }
+    function renderStash() {
+        const box = document.getElementById('stashBox');
+        if (BANNED_PREFIXES.length === 0) { box.innerHTML = '<span style="color:#666; font-size:12px; margin-top:5px; font-family:Arial;">No bans active.</span>'; return; }
+        box.innerHTML = BANNED_PREFIXES.map(p => `<div class="banned-tag">${p.toUpperCase()} <span onclick="removeBan('${p}')">✖</span></div>`).join('');
+    }
+
+    // --- NAVIGATION ---
+    function openSettings(fromId) { settingsReturnScreen = fromId; document.getElementById(fromId).classList.add('hidden'); document.getElementById('settingsScreen').classList.remove('hidden'); }
+    function closeSettings() { document.getElementById('settingsScreen').classList.add('hidden'); document.getElementById(settingsReturnScreen).classList.remove('hidden'); }
+    function openCustom(fromId) { settingsReturnScreen = fromId; document.getElementById(fromId).classList.add('hidden'); document.getElementById('customScreen').classList.remove('hidden'); }
+    function closeCustom() { document.getElementById('customScreen').classList.add('hidden'); document.getElementById(settingsReturnScreen).classList.remove('hidden'); }
+
+    // --- CHESS ENGINE ANALYSIS ---
+    function logHistory(player, word, promptReceived) { 
+        currentRoundHistory.push({ player, word, promptReceived, turn: state.turnCount }); 
+    }
+
+    function generateAnalysis() {
+        document.getElementById('gameOverScreen').classList.add('hidden');
+        document.getElementById('analysisScreen').classList.remove('hidden');
+        const container = document.getElementById('analysisContent');
+        container.innerHTML = "<div style='text-align:center; color:#555;'>Engine is analyzing the entire match...</div>";
+
+        setTimeout(() => {
+            let html = "";
+            
+            fullMatchHistory.forEach((round, index) => {
+                html += `<div class="round-divider">ROUND ${index + 1}</div>`;
+                
+                let roundUsedSet = new Set();
+                let userMoves = round.moves.filter(h => h.player === 'user');
+
+                if (userMoves.length === 0 && round.died === 'user') {
+                    html += `<div class='move-card blunder'><div class='move-header'>Turn 1: Did not play</div><div class='move-eval'>Timer ran out before you could make a move.</div></div>`;
+                } else {
+                    round.moves.forEach(move => {
+                        if (move.player === 'user') {
+                            let targetLen = getTargetLength(move.turn);
+                            
+                            if (targetLen === 1) {
+                                html += `
+                                    <div class='move-card book'>
+                                        <div class='move-header'><span>Turn ${move.turn}: ${move.word.toUpperCase()}</span><span style="color:#aaa;">📖 Book Move</span></div>
+                                        <div class='move-eval'>Standard 1-letter opening.</div>
+                                    </div>`;
+                            } else {
+                                let analysis = analyzeMoveDeep(move.promptReceived, move.word, move.turn, roundUsedSet);
+                                
+                                let evalClass = analysis.rating === "Excellent" ? "excellent" : (analysis.rating === "Inaccuracy" ? "inaccuracy" : "blunder");
+                                let evalColor = analysis.rating === "Excellent" ? "#00ff88" : (analysis.rating === "Inaccuracy" ? "#ffcc00" : "#ff3366");
+                                let evalEmoji = analysis.rating === "Excellent" ? "🌟" : (analysis.rating === "Inaccuracy" ? "?! " : "?? ");
+
+                                let cardHtml = `
+                                    <div class='move-card ${evalClass}'>
+                                        <div class='move-header'>
+                                            <span>Turn ${move.turn}: Played ${move.word.toUpperCase()}</span>
+                                            <span style="color:${evalColor};">${evalEmoji} ${analysis.rating}</span>
+                                        </div>
+                                        <div class='move-eval'>Given prefix <strong>${move.promptReceived.toUpperCase()}</strong>. Left bot with <strong>${analysis.botOptionsLeft}</strong> valid responses.</div>`;
+
+                                if (analysis.rating !== "Excellent" && analysis.bestLine) {
+                                    cardHtml += `
+                                        <div class='forced-line'>
+                                            <span style="color:#00bfff; font-size:12px; display:block; margin-bottom:5px;">ENGINE SUGGESTION (Forced Combo):</span>
+                                            You play: <span class="word-highlight">${analysis.bestLine.myMove1}</span>
+                                            <span class="line-arrow">➔</span> Bot forced to play: <span style="color:#ffaa00;">${analysis.bestLine.botForcedReply}</span>
+                                            <span class="line-arrow">➔</span> Drops prefix [${analysis.bestLine.myNextPrompt}] 
+                                            <span class="line-arrow">➔</span> You counter: <span class="trap-highlight">${analysis.bestLine.myTrap}</span>
+                                        </div>`;
+                                }
+                                cardHtml += `</div>`;
+                                html += cardHtml;
+                            }
+                        }
+                        roundUsedSet.add(move.word); 
+                    });
+                }
+
+                if (round.died === 'user') {
+                    html += `
+                        <div class='move-card blunder' style='margin-top: 15px; border-color: #ff3366;'>
+                            <div class='move-header'><span style="color:#ff3366;">💀 You Lost a Heart (Timer/Trapped)</span></div>
+                            <div class='move-eval'>You failed on prefix <strong>${round.prompt.toUpperCase()}</strong>.</div>
+                            <button class="btn btn-small" style="background:#ff3366; margin-top:10px; box-shadow: 0 4px 0 #cc0033;" onclick="addQuickBan(this, '${round.prompt}')">🚫 BAN PREFIX [${round.prompt.toUpperCase()}]</button>
+                        </div>`;
+                } else if (round.died === 'bot') {
+                    html += `
+                        <div class='move-card excellent' style='margin-top: 15px;'>
+                            <div class='move-header'><span style="color:#00ff88;">🏆 Bot Lost a Heart</span></div>
+                            <div class='move-eval'>Bot failed on prefix <strong>${round.prompt.toUpperCase()}</strong>.</div>
+                        </div>`;
+                }
+            });
+
+            container.innerHTML = html;
+            container.scrollTop = container.scrollHeight; 
+        }, 500); 
+    }
+
+    function closeAnalysis() {
+        document.getElementById('analysisScreen').classList.add('hidden');
+        document.getElementById('gameOverScreen').classList.remove('hidden');
+    }
+
+    function getTargetLength(turns) {
+        if (turns <= 4) return 1; if (turns <= 9) return 2; if (turns <= 14) return 3; return 4;
+    }
+
+    function calculateNextPromptSim(word, turns, usedSet) {
+        let targetLength = getTargetLength(turns);
+        for (let len = Math.min(targetLength, word.length); len > 0; len--) {
+            let suffix = word.slice(-len);
+            if (BANNED_PREFIXES.includes(suffix)) continue;
+            if (MAIN_LIST.some(w => w.startsWith(suffix) && !usedSet.has(w))) return suffix;
+        }
+        const alphabet = "abcdefghijklmnopqrstuvwxyz";
+        let available = alphabet.split('').filter(c => MAIN_LIST.some(w => w.startsWith(c) && !usedSet.has(w)));
+        return available.length > 0 ? available[0] : "a"; 
+    }
+
+    function analyzeMoveDeep(prompt, wordPlayed, turnNum, historicalUsedSet) {
+        let actualPromptGivenToBot = calculateNextPromptSim(wordPlayed, turnNum, historicalUsedSet);
+        let botOptions = MAIN_LIST.filter(w => w.startsWith(actualPromptGivenToBot) && !historicalUsedSet.has(w));
+        let actualOptionsCount = botOptions.length;
+
+        let rating = "Blunder";
+        if (actualOptionsCount <= 5) rating = "Excellent";
+        else if (actualOptionsCount <= 50) rating = "Inaccuracy";
+
+        let allValidMyMoves = MAIN_LIST.filter(w => w.startsWith(prompt) && !historicalUsedSet.has(w));
+        let bestLine = null;
+        let lowestBotOptions = 99999;
+
+        // Pre-calculate exact branching factors to ensure phase-accurate traps
+        let evaluatedMoves = allValidMyMoves.map(w => {
+            let simPrompt = calculateNextPromptSim(w, turnNum, historicalUsedSet);
+            let opts = MAIN_LIST.filter(x => x.startsWith(simPrompt) && !historicalUsedSet.has(x)).length;
+            let isTrap = TRAP_LIST.includes(w);
+            return { word: w, opts: opts, isTrap: isTrap };
+        });
+
+        evaluatedMoves.sort((a, b) => {
+            if (a.opts !== b.opts) return a.opts - b.opts;
+            return (b.isTrap ? 1 : 0) - (a.isTrap ? 1 : 0);
+        });
+
+        let searchPool = evaluatedMoves.slice(0, 15); 
+
+        for (let moveObj of searchPool) {
+            let testWord = moveObj.word;
+            let simBotOptionsCount = moveObj.opts;
+            
+            if (simBotOptionsCount < lowestBotOptions) {
+                lowestBotOptions = simBotOptionsCount;
+                
+                let simUsed = new Set(historicalUsedSet);
+                simUsed.add(testWord);
+
+                let simBotPrompt = calculateNextPromptSim(testWord, turnNum, simUsed);
+                let simBotOptions = MAIN_LIST.filter(w => w.startsWith(simBotPrompt) && !simUsed.has(w));
+
+                if (simBotOptions.length > 0 && simBotOptions.length <= 3) {
+                    simBotOptions.sort((a,b) => a.length - b.length);
+                    let forcedBotWord = simBotOptions[0];
+                    simUsed.add(forcedBotWord);
+                    
+                    let simMyNextPrompt = calculateNextPromptSim(forcedBotWord, turnNum + 1, simUsed);
+                    let myNextOptions = MAIN_LIST.filter(w => w.startsWith(simMyNextPrompt) && !simUsed.has(w));
+                    
+                    if (myNextOptions.length === 0) continue; 
+
+                    let bestFollowUp = myNextOptions[0];
+                    let bestFollowUpOpts = 99999;
+                    
+                    myNextOptions.forEach(nw => {
+                         let nwPrompt = calculateNextPromptSim(nw, turnNum + 2, simUsed);
+                         let nwOpts = MAIN_LIST.filter(x => x.startsWith(nwPrompt) && !simUsed.has(x)).length;
+                         if (nwOpts < bestFollowUpOpts) {
+                             bestFollowUpOpts = nwOpts;
+                             bestFollowUp = nw;
+                         } else if (nwOpts === bestFollowUpOpts && TRAP_LIST.includes(nw)) {
+                             bestFollowUp = nw; 
+                         }
+                    });
+
+                    bestLine = {
+                        myMove1: testWord.toUpperCase(), botForcedReply: forcedBotWord.toUpperCase(),
+                        myNextPrompt: simMyNextPrompt.toUpperCase(), myTrap: bestFollowUp.toUpperCase()
+                    };
+                    
+                    if (lowestBotOptions === 1) break; 
+                } else if (!bestLine) {
+                     bestLine = {
+                        myMove1: testWord.toUpperCase(), botForcedReply: "Multiple Options",
+                        myNextPrompt: "VARIES", myTrap: "Requires Adaptability"
+                    };
+                }
+            }
+        }
+
+        if (actualOptionsCount <= lowestBotOptions + 5 && actualOptionsCount > 0) {
+            rating = "Excellent"; bestLine = null; 
+        }
+
+        return { rating, botOptionsLeft: actualOptionsCount, bestLine };
+    }
+
+    // --- GAME LOOP & LOGIC ---
+    function startGame(type) {
+        initAudio();
+        document.querySelectorAll('.overlay').forEach(el => el.classList.add('hidden'));
+        
+        USED_WORDS.clear(); currentRoundHistory = []; fullMatchHistory = [];
+        
+        state = {
+            mode: 'playing', gameType: type, turn: 'user', turnCount: 1, prompt: '', userTyped: '', lastBotWord: '',
+            userLives: 2, botLives: 2, timer: 15.0, currentMaxTime: 15.0, intervalId: null, botTimeout: null,
+            shrinkStartTurn: 50, shrinkIntervalTurn: 1, botSpamSuffix: '', practiceWords: []
+        };
+
+        if (type === 'custom') {
+            state.shrinkStartTurn = parseInt(document.getElementById('custShrinkStart').value) || 50;
+            state.shrinkIntervalTurn = Math.max(1, parseInt(document.getElementById('custShrinkInt').value) || 1);
+            state.botSpamSuffix = document.getElementById('custBotSpam').value.toLowerCase().trim();
+            
+            let pWords = document.getElementById('custPracticeWords').value.toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+            state.practiceWords = pWords.map(w => ({word: w, hit: false}));
+            
+            renderPracticeUI();
+            document.getElementById('practiceSidebar').classList.remove('hidden');
+        } else {
+            document.getElementById('practiceSidebar').classList.add('hidden');
+        }
+
+        document.getElementById('replayBtn').onclick = () => startGame(type);
+        
+        updateHearts(); document.getElementById('botTyping').classList.add('hidden');
+        const alphabet = "abcdefghijklmnopqrstuvwxyz";
+        setPrompt(alphabet[Math.floor(Math.random() * alphabet.length)]);
+        state.userTyped = ''; updateTypingBubble();
+        startTimer();
+    }
+
+    function renderPracticeUI() {
+        const cont = document.getElementById('practiceListContainer');
+        cont.innerHTML = state.practiceWords.map(item => `<div class="practice-word ${item.hit?'hit':''}">${item.word}</div>`).join('');
+    }
+
+    function setPrompt(str) {
+        state.prompt = str.toLowerCase();
+        const box = document.getElementById('promptBox'); box.innerHTML = '';
+        for(let char of state.prompt) {
+            let tile = document.createElement('div'); tile.className = 'letter-tile'; tile.innerText = char.toUpperCase();
+            box.appendChild(tile);
+        }
+        box.style.animation = 'none'; box.offsetHeight; box.style.animation = null; 
+        
+        const counter = document.getElementById('turnCounter');
+        counter.innerText = `TURN: ${state.turnCount}`;
+        
+        if (state.turnCount >= state.shrinkStartTurn) {
+            counter.classList.add('danger-text'); counter.innerText += ` (SHRINKING!)`;
+        } else { counter.classList.remove('danger-text'); }
+    }
+
+    // --- TIMER SYSTEM ---
+    function calculateMaxTime() {
+        let base = 15.0;
+        if (state.turnCount >= state.shrinkStartTurn) {
+            let drops = Math.floor((state.turnCount - state.shrinkStartTurn) / state.shrinkIntervalTurn) + 1;
+            return Math.max(5.0, base - drops);
+        }
+        return base;
+    }
+
+    function startTimer() {
+        clearInterval(state.intervalId); 
+        state.currentMaxTime = calculateMaxTime(); state.timer = state.currentMaxTime;
+        const bomb = document.getElementById('bombDisplay');
+        bomb.classList.add('ticking'); bomb.classList.remove('exploding');
+        let lastInt = Math.ceil(state.timer);
+
+        state.intervalId = setInterval(() => {
+            if (state.mode !== 'playing') return;
+            state.timer -= 0.1;
+            let currentInt = Math.ceil(state.timer);
+            if (currentInt < lastInt && currentInt > 0) { playTick(); lastInt = currentInt; }
+            if(state.timer <= 3.0) { bomb.classList.add('exploding'); bomb.classList.remove('ticking'); }
+
+            if (state.timer <= 0) {
+                state.timer = 0; bomb.innerText = "0.0s"; clearInterval(state.intervalId); triggerExplosion();
+            } else { bomb.innerText = state.timer.toFixed(1) + "s"; }
+        }, 100);
+    }
+
+    function triggerExplosion() {
+        playExplosion(); shakeScreen();
+        
+        fullMatchHistory.push({
+            moves: [...currentRoundHistory],
+            died: state.turn,
+            prompt: state.prompt
+        });
+
+        if (state.turn === 'user') state.userLives--; else state.botLives--;
+        updateHearts();
+        
+        if (state.userLives <= 0 || state.botLives <= 0) { endGame(); return; }
+
+        state.turnCount = 1; currentRoundHistory = []; USED_WORDS.clear();
+        
+        const alphabet = "abcdefghijklmnopqrstuvwxyz";
+        setPrompt(alphabet[Math.floor(Math.random() * alphabet.length)]);
+        
+        if (state.turn === 'user') { state.userTyped = ''; updateTypingBubble(); } 
+        else { document.getElementById('botTyping').classList.add('hidden'); triggerBotTurn(); }
+        startTimer();
+    }
+
+    function shakeScreen() { document.body.style.animation = 'shake 0.3s'; setTimeout(() => document.body.style.animation = '', 300); }
+    function updateHearts() {
+        const uHearts = document.getElementById('userHearts').children;
+        for(let i=0; i<2; i++) uHearts[i].className = i < state.userLives ? 'heart' : 'heart lost';
+        const bHearts = document.getElementById('botHearts').children;
+        for(let i=0; i<2; i++) bHearts[i].className = i < state.botLives ? 'heart' : 'heart lost';
+    }
+
+    function updateTypingBubble() {
+        const bubble = document.getElementById('userTyping');
+        let prefix = state.prompt.toUpperCase(); 
+        let userPart = state.userTyped.toUpperCase();
+        
+        if (userPart.startsWith(prefix)) {
+            userPart = userPart.slice(prefix.length);
+        }
+        
+        bubble.innerHTML = `<span class="prefix-text">${prefix}</span>${userPart}`;
+        bubble.classList.remove('hidden');
+    }
+
+    // --- TURN HANDLING ---
+    function submitWord(word) {
+        if (!word.startsWith(state.prompt) || !MAIN_LIST.includes(word) || USED_WORDS.has(word)) return false;
+        playCorrect(); USED_WORDS.add(word);
+        
+        if (state.turn === 'bot') state.lastBotWord = word;
+        if (state.turn === 'user' && state.gameType === 'custom') {
+            let pracItem = state.practiceWords.find(p => p.word === word);
+            if (pracItem) { pracItem.hit = true; renderPracticeUI(); }
+        }
+        
+        logHistory(state.turn, word, state.prompt); 
+        state.turnCount++;
+        
+        let nextPrompt = calculateNextPromptSim(word, state.turnCount - 1, USED_WORDS);
+        setPrompt(nextPrompt); switchTurn(); return true;
+    }
+
+    function switchTurn() {
+        if (state.turn === 'user') {
+            state.turn = 'bot'; document.getElementById('userTyping').classList.add('hidden'); triggerBotTurn();
+        } else {
+            state.turn = 'user'; document.getElementById('botTyping').classList.add('hidden');
+            state.userTyped = ''; updateTypingBubble();
+        }
+        startTimer();
+    }
+
+    // --- SMART INPUT CAPTURE ---
+    document.addEventListener('keydown', (e) => {
+        if(document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return; 
+
+        if (state.mode === 'playing' && e.key === 'Escape') { pauseGame(); return; }
+        if (state.mode === 'paused' && e.key === 'Escape') { resumeGame(); return; }
+        if (state.mode !== 'playing' || state.turn !== 'user') return;
+
+        const bubble = document.getElementById('userTyping');
+        
+        if (e.key === 'Backspace') {
+            if (state.userTyped.length > 0) state.userTyped = state.userTyped.slice(0, -1);
+        } else if (e.key === 'Enter') {
+            let attempt = state.userTyped.toLowerCase();
+            
+            if (!attempt.startsWith(state.prompt)) { attempt = state.prompt + attempt; }
+            
+            if (attempt.length >= state.prompt.length && attempt.length > 0) {
+                let success = submitWord(attempt);
+                if (!success) {
+                    state.userTyped = ''; 
+                    bubble.style.animation = 'none'; bubble.offsetHeight;
+                    bubble.style.animation = 'errorShake 0.3s'; bubble.style.borderColor = '#ff3333';
+                    setTimeout(() => { bubble.style.borderColor = '#000'; }, 300);
+                }
+            }
+        } else if (/^[a-zA-Z]$/.test(e.key)) {
+            state.userTyped += e.key.toLowerCase(); bubble.style.borderColor = '#000'; 
+        }
+        
+        if (state.turn === 'user') updateTypingBubble();
+    });
+
+    // --- BOT AI ---
+    function triggerBotTurn() {
+        const bubble = document.getElementById('botTyping');
+        bubble.innerText = "..."; 
+        bubble.style.color = "#888";
+        bubble.classList.remove('hidden');
+
+        let thinkTime = Math.random() * 800 + 400; 
+        clearTimeout(state.botTimeout);
+        
+        state.botTimeout = setTimeout(() => {
+            if (state.mode !== 'playing' || state.turn !== 'bot') return;
+
+            let validWords = MAIN_LIST.filter(w => w.startsWith(state.prompt) && !USED_WORDS.has(w));
+            
+            if (validWords.length === 0) { 
+                bubble.innerText = "!?"; 
+                bubble.style.color = "#ff3333";
+                state.timer = 0.5; 
+                return; 
+            }
+
+            let diff = document.getElementById('botDifficulty').value;
+            let chosenWord = "";
+
+            if (state.gameType === 'custom' && state.botSpamSuffix) {
+                let spams = validWords.filter(w => w.endsWith(state.botSpamSuffix));
+                if (spams.length > 0) chosenWord = spams[Math.floor(Math.random() * spams.length)];
+            }
+
+            if (!chosenWord) {
+                if (diff === 'easy') {
+                    chosenWord = validWords[Math.floor(Math.random() * validWords.length)];
+                } else {
+                    let traps = validWords.filter(w => TRAP_LIST.includes(w));
+                    if (traps.length > 0) {
+                        chosenWord = traps[Math.floor(Math.random() * traps.length)]; 
+                    } else {
+                        validWords.sort((a, b) => a.length - b.length);
+                        chosenWord = validWords[Math.floor(Math.random() * Math.min(5, validWords.length))];
+                    }
+                }
+            }
+
+            bubble.style.color = "#000";
+            bubble.innerText = chosenWord.toUpperCase();
+            setTimeout(() => { if (state.mode === 'playing' && state.turn === 'bot') submitWord(chosenWord); }, 300);
+        }, thinkTime);
+    }
+
+    // --- GAME CONTROLS ---
+    function pauseGame() { state.mode = 'paused'; document.getElementById('pauseScreen').classList.remove('hidden'); }
+    function resumeGame() { state.mode = 'playing'; document.getElementById('pauseScreen').classList.add('hidden'); }
+    function quitGame() {
+        state.mode = 'menu';
+        document.getElementById('pauseScreen').classList.add('hidden'); document.getElementById('gameOverScreen').classList.add('hidden'); document.getElementById('analysisScreen').classList.add('hidden');
+        document.getElementById('menuScreen').classList.remove('hidden'); document.getElementById('practiceSidebar').classList.add('hidden');
+        clearInterval(state.intervalId); clearTimeout(state.botTimeout);
+    }
+    function endGame() {
+        state.mode = 'gameover'; clearInterval(state.intervalId);
+        let win = state.userLives > 0;
+        document.getElementById('goTitle').innerText = win ? "MATCH WON! 🎉" : "MATCH LOST! 💀";
+        document.getElementById('goTitle').style.color = win ? "#00ff88" : "#ff3366";
+        document.getElementById('goStats').innerText = `Completed Match.`;
+        document.getElementById('gameOverScreen').classList.remove('hidden');
+    }
+
+</script>
+</body>
+</html>
