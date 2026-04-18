@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Last Letter Simulator - The Unbreakable Patch</title>
+    <title>Last Letter Simulator - Final Engine Optimization</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
 
@@ -365,7 +365,6 @@
         } catch (e) {
             document.getElementById('loadStatus').innerText = "FATAL ERROR: " + e.message;
             document.getElementById('loadStatus').style.color = "#ff3333";
-            console.error("Fetch Error:", e);
         }
     }
 
@@ -375,7 +374,7 @@
         return pool.filter(w => w.startsWith(prefix) && !usedSet.has(w));
     }
 
-    // --- AUDIO SYSTEM (Safeguarded) ---
+    // --- AUDIO SYSTEM ---
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx;
     function initAudio() {
@@ -410,7 +409,7 @@
         shrinkStartTurn: 50, shrinkIntervalTurn: 1, botSpamSuffix: '', practiceWords: [] 
     };
 
-    // --- BANNED PREFIX STASH (WITH VAULT SAVING) ---
+    // --- BANNED PREFIX STASH ---
     function saveVault() { localStorage.setItem('lastLetter_BannedPrefixes', JSON.stringify(BANNED_PREFIXES)); }
 
     const stashInput = document.getElementById('stashInput');
@@ -495,41 +494,36 @@
                                     <div class='move-eval'>Standard 1-letter opening.</div>
                                 </div>`;
                         } else {
-                            let analysis = analyzeMoveSmart(move.promptReceived, move.word, move.turn, roundUsedSet);
-                            
-                            let evalClass = analysis.rating === "Excellent" ? "excellent" : (analysis.rating === "Inaccuracy" ? "inaccuracy" : "blunder");
-                            let evalColor = analysis.rating === "Excellent" ? "#00ff88" : (analysis.rating === "Inaccuracy" ? "#ffcc00" : "#ff3366");
-                            let evalEmoji = analysis.rating === "Excellent" ? "🌟" : (analysis.rating === "Inaccuracy" ? "?! " : "?? ");
+                            try {
+                                let analysis = analyzeMoveDeep(move.promptReceived, move.word, move.turn, roundUsedSet);
+                                
+                                let evalClass = analysis.rating === "Excellent" ? "excellent" : (analysis.rating === "Inaccuracy" ? "inaccuracy" : "blunder");
+                                let evalColor = analysis.rating === "Excellent" ? "#00ff88" : (analysis.rating === "Inaccuracy" ? "#ffcc00" : "#ff3366");
+                                let evalEmoji = analysis.rating === "Excellent" ? "🌟" : (analysis.rating === "Inaccuracy" ? "?! " : "?? ");
 
-                            let cardHtml = `
-                                <div class='move-card ${evalClass}'>
-                                    <div class='move-header'>
-                                        <span>Turn ${move.turn}: Played ${move.word.toUpperCase()}</span>
-                                        <span style="color:${evalColor};">${evalEmoji} ${analysis.rating}</span>
-                                    </div>
-                                    <div class='move-eval'>Given prefix <strong>${move.promptReceived.toUpperCase()}</strong>. Left bot with <strong>${analysis.botOptionsLeft}</strong> valid responses.</div>`;
+                                let cardHtml = `
+                                    <div class='move-card ${evalClass}'>
+                                        <div class='move-header'>
+                                            <span>Turn ${move.turn}: Played ${move.word.toUpperCase()}</span>
+                                            <span style="color:${evalColor};">${evalEmoji} ${analysis.rating}</span>
+                                        </div>
+                                        <div class='move-eval'>Given prefix <strong>${move.promptReceived.toUpperCase()}</strong>. Left bot with <strong>${analysis.botOptionsLeft}</strong> valid responses.</div>`;
 
-                            if (analysis.rating !== "Excellent" && analysis.bestLine) {
-                                if (analysis.bestLine.isForcedTrap) {
+                                if (analysis.rating !== "Excellent" && analysis.bestLine) {
                                     cardHtml += `
                                         <div class='forced-line'>
-                                            <span style="color:#00bfff; font-size:12px; display:block; margin-bottom:5px;">FORCED TRAP AVAILABLE:</span>
+                                            <span style="color:#00bfff; font-size:12px; display:block; margin-bottom:5px;">ENGINE SUGGESTION (Forced Combo):</span>
                                             You play: <span class="word-highlight">${analysis.bestLine.myMove1}</span>
                                             <span class="line-arrow">➔</span> Bot forced to play: <span style="color:#ffaa00;">${analysis.bestLine.botForcedReply}</span>
                                             <span class="line-arrow">➔</span> Drops prefix [${analysis.bestLine.myNextPrompt}] 
                                             <span class="line-arrow">➔</span> You counter: <span class="trap-highlight">${analysis.bestLine.myTrap}</span>
                                         </div>`;
-                                } else {
-                                    cardHtml += `
-                                        <div class='forced-line'>
-                                            <span style="color:#00bfff; font-size:12px; display:block; margin-bottom:5px;">BEST RESTRICTIVE MOVE:</span>
-                                            You play: <span class="word-highlight">${analysis.bestLine.myMove1}</span>
-                                            <span class="line-arrow">➔</span> Bot is heavily restricted to only <span style="color:#ffaa00;">${analysis.bestLine.botOptionsLeft}</span> options.
-                                        </div>`;
                                 }
+                                cardHtml += `</div>`;
+                                container.innerHTML += cardHtml;
+                            } catch (analyzeErr) {
+                                container.innerHTML += `<div class='move-card blunder' style='border-color:#ffcc00;'><div class='move-header'>Turn ${move.turn}: Played ${move.word.toUpperCase()}</div><div class='move-eval'>Engine skipped deep analysis due to high complexity.</div></div>`;
                             }
-                            cardHtml += `</div>`;
-                            container.innerHTML += cardHtml;
                             container.scrollTop = container.scrollHeight; 
                         }
                     }
@@ -581,9 +575,11 @@
         return available.length > 0 ? available[0] : "a"; 
     }
 
-    function analyzeMoveSmart(prompt, wordPlayed, turnNum, historicalUsedSet) {
+    function analyzeMoveDeep(prompt, wordPlayed, turnNum, historicalUsedSet) {
         let actualPromptGivenToBot = calculateNextPromptSim(wordPlayed, turnNum, historicalUsedSet);
-        let actualOptionsCount = getWordsStartingWith(actualPromptGivenToBot, historicalUsedSet).length;
+        
+        let botOptions = getWordsStartingWith(actualPromptGivenToBot, historicalUsedSet);
+        let actualOptionsCount = botOptions.length;
 
         let rating = "Blunder";
         if (actualOptionsCount <= 5) rating = "Excellent";
@@ -591,19 +587,41 @@
 
         let allValidMyMoves = getWordsStartingWith(prompt, historicalUsedSet);
         let bestLine = null;
-        let lowestBotOptions = Infinity;
+        let lowestBotOptions = 99999;
 
-        for (let word of allValidMyMoves) {
-            let simPrompt = calculateNextPromptSim(word, turnNum, historicalUsedSet);
-            let botOptsCount = getWordsStartingWith(simPrompt, historicalUsedSet).length;
+        // PRUNING: Only test traps + 50 normal words to prevent engine timeout
+        let myTraps = allValidMyMoves.filter(w => TRAP_SET.has(w));
+        let myOthers = allValidMyMoves.filter(w => !TRAP_SET.has(w)).slice(0, 50);
+        let candidateMoves = [...myTraps, ...myOthers];
+
+        let evaluatedMoves = candidateMoves.map(w => {
+            let simPrompt = calculateNextPromptSim(w, turnNum, historicalUsedSet);
+            let opts = getWordsStartingWith(simPrompt, historicalUsedSet).length; 
+            let isTrap = TRAP_SET.has(w);
+            return { word: w, opts: opts, isTrap: isTrap };
+        });
+
+        evaluatedMoves.sort((a, b) => {
+            if (a.opts !== b.opts) return a.opts - b.opts;
+            return (b.isTrap ? 1 : 0) - (a.isTrap ? 1 : 0);
+        });
+
+        let searchPool = evaluatedMoves.slice(0, 10); 
+
+        for (let moveObj of searchPool) {
+            let testWord = moveObj.word;
+            let simBotOptionsCount = moveObj.opts;
             
-            if (botOptsCount < lowestBotOptions) {
-                lowestBotOptions = botOptsCount;
+            if (simBotOptionsCount < lowestBotOptions) {
+                lowestBotOptions = simBotOptionsCount;
                 
-                if (botOptsCount > 0 && botOptsCount <= 3) {
-                    let simUsed = new Set(historicalUsedSet);
-                    simUsed.add(word);
-                    let simBotOptions = getWordsStartingWith(simPrompt, simUsed);
+                let simUsed = new Set(historicalUsedSet);
+                simUsed.add(testWord);
+
+                let simBotPrompt = calculateNextPromptSim(testWord, turnNum, simUsed);
+                let simBotOptions = getWordsStartingWith(simBotPrompt, simUsed);
+
+                if (simBotOptions.length > 0 && simBotOptions.length <= 3) {
                     simBotOptions.sort((a,b) => a.length - b.length);
                     let forcedBotWord = simBotOptions[0];
                     simUsed.add(forcedBotWord);
@@ -611,25 +629,40 @@
                     let simMyNextPrompt = calculateNextPromptSim(forcedBotWord, turnNum + 1, simUsed);
                     let myNextOptions = getWordsStartingWith(simMyNextPrompt, simUsed);
                     
-                    if (myNextOptions.length > 0) {
-                        let myNextTrap = myNextOptions.find(w => TRAP_SET.has(w)) || myNextOptions[0];
-                        bestLine = {
-                            isForcedTrap: true,
-                            myMove1: word.toUpperCase(), 
-                            botForcedReply: forcedBotWord.toUpperCase(),
-                            myNextPrompt: simMyNextPrompt.toUpperCase(), 
-                            myTrap: myNextTrap.toUpperCase()
-                        };
-                    }
-                } else {
+                    if (myNextOptions.length === 0) continue; 
+
+                    // PRUNING: Limit follow up evaluation
+                    let nextTraps = myNextOptions.filter(w => TRAP_SET.has(w));
+                    let nextOthers = myNextOptions.filter(w => !TRAP_SET.has(w)).slice(0, 10);
+                    let nextCandidates = [...nextTraps, ...nextOthers];
+
+                    let bestFollowUp = myNextOptions[0];
+                    let bestFollowUpOpts = 99999;
+                    
+                    nextCandidates.forEach(nw => {
+                         let nwPrompt = calculateNextPromptSim(nw, turnNum + 2, simUsed);
+                         let nwOpts = getWordsStartingWith(nwPrompt, simUsed).length;
+                         if (nwOpts < bestFollowUpOpts) {
+                             bestFollowUpOpts = nwOpts;
+                             bestFollowUp = nw;
+                         } else if (nwOpts === bestFollowUpOpts && TRAP_SET.has(nw)) {
+                             bestFollowUp = nw; 
+                         }
+                    });
+
                     bestLine = {
-                        isForcedTrap: false,
-                        myMove1: word.toUpperCase(),
-                        botOptionsLeft: botOptsCount
+                        myMove1: testWord.toUpperCase(), botForcedReply: forcedBotWord.toUpperCase(),
+                        myNextPrompt: simMyNextPrompt.toUpperCase(), myTrap: bestFollowUp.toUpperCase()
+                    };
+                    
+                    if (lowestBotOptions === 1) break; 
+                } else if (!bestLine) {
+                     bestLine = {
+                        myMove1: testWord.toUpperCase(), botForcedReply: "Multiple Options",
+                        myNextPrompt: "VARIES", myTrap: "Requires Adaptability"
                     };
                 }
             }
-            if (lowestBotOptions === 0) break; 
         }
 
         if (actualOptionsCount <= lowestBotOptions + 5 && actualOptionsCount > 0) {
@@ -697,17 +730,19 @@
         } else { counter.classList.remove('danger-text'); }
     }
 
-    function startTimer() {
-        clearInterval(state.intervalId); 
+    // --- TIMER SYSTEM ---
+    function calculateMaxTime() {
         let base = 15.0;
         if (state.turnCount >= state.shrinkStartTurn) {
             let drops = Math.floor((state.turnCount - state.shrinkStartTurn) / state.shrinkIntervalTurn) + 1;
-            state.currentMaxTime = Math.max(5.0, base - drops);
-        } else {
-            state.currentMaxTime = base;
+            return Math.max(5.0, base - drops);
         }
-        state.timer = state.currentMaxTime;
+        return base;
+    }
 
+    function startTimer() {
+        clearInterval(state.intervalId); 
+        state.currentMaxTime = calculateMaxTime(); state.timer = state.currentMaxTime;
         const bomb = document.getElementById('bombDisplay');
         bomb.classList.add('ticking'); bomb.classList.remove('exploding');
         let lastInt = Math.ceil(state.timer);
@@ -761,59 +796,55 @@
         const bubble = document.getElementById('userTyping');
         let prefix = state.prompt.toUpperCase(); 
         let userPart = state.userTyped.toUpperCase();
+        
         if (userPart.startsWith(prefix)) { userPart = userPart.slice(prefix.length); }
+        
         bubble.innerHTML = `<span class="prefix-text">${prefix}</span>${userPart}`;
         bubble.classList.remove('hidden');
     }
 
-    // --- BULLETPROOF TURN HANDLING ---
+    // --- TURN HANDLING & ERROR DISPLAY ---
     function submitWord(word) {
         try {
-            if (!word) return "EMPTY_WORD";
             if (!word.startsWith(state.prompt)) return "PREFIX_MISMATCH";
             if (!MAIN_SET.has(word)) return "NOT_IN_DICTIONARY";
             if (USED_WORDS.has(word)) return "ALREADY_USED";
             
-            playCorrect(); 
-            USED_WORDS.add(word);
+            playCorrect(); USED_WORDS.add(word);
             
             if (state.turn === 'bot') state.lastBotWord = word;
             if (state.turn === 'user' && state.gameType === 'custom') {
-                if(state.practiceWords) {
-                    let pracItem = state.practiceWords.find(p => p.word === word);
-                    if (pracItem) { pracItem.hit = true; renderPracticeUI(); }
-                }
+                let pracItem = state.practiceWords.find(p => p.word === word);
+                if (pracItem) { pracItem.hit = true; renderPracticeUI(); }
             }
             
             logHistory(state.turn, word, state.prompt); 
             state.turnCount++;
             
             let nextPrompt = calculateNextPromptSim(word, state.turnCount - 1, USED_WORDS);
-            if(!nextPrompt) nextPrompt = "a"; 
             setPrompt(nextPrompt); 
             
-            switchTurn(); 
-            return "SUCCESS";
+            if(state.turn === 'user') { document.getElementById('userTyping').classList.add('hidden'); }
+            
+            switchTurn(); return "SUCCESS";
         } catch (err) {
-            console.error("Engine Crash:", err);
-            return "FATAL_ENGINE_ERROR";
+            console.error("Submission Error:", err);
+            let errMsg = err.message.replace(/ /g, '_').toUpperCase();
+            return `ERR_${errMsg}`; 
         }
     }
 
     function switchTurn() {
         if (state.turn === 'user') {
-            state.turn = 'bot'; 
-            triggerBotTurn();
+            state.turn = 'bot'; triggerBotTurn();
         } else {
-            state.turn = 'user'; 
-            document.getElementById('botTyping').classList.add('hidden');
-            state.userTyped = ''; 
-            updateTypingBubble();
+            state.turn = 'user'; document.getElementById('botTyping').classList.add('hidden');
+            state.userTyped = ''; updateTypingBubble();
         }
         startTimer();
     }
 
-    // --- HARDENED INPUT CAPTURE ---
+    // --- SMART INPUT CAPTURE ---
     document.addEventListener('keydown', (e) => {
         try {
             if(document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return; 
@@ -826,40 +857,32 @@
             
             if (e.key === 'Backspace') {
                 if (state.userTyped.length > 0) state.userTyped = state.userTyped.slice(0, -1);
-                if (state.turn === 'user' && !bubble.innerHTML.includes('ff3366')) updateTypingBubble();
             } else if (e.key === 'Enter') {
                 let attempt = state.userTyped.toLowerCase();
+                
                 if (!attempt.startsWith(state.prompt)) { attempt = state.prompt + attempt; }
                 
                 if (attempt.length >= state.prompt.length && attempt.length > 0) {
-                    
-                    // Instantly hide bubble to prevent ghosting while calculating
-                    bubble.classList.add('hidden'); 
-                    
                     let result = submitWord(attempt);
-                    
                     if (result !== "SUCCESS") {
                         state.userTyped = ''; 
                         bubble.style.animation = 'none'; bubble.offsetHeight;
                         bubble.style.animation = 'errorShake 0.3s'; bubble.style.borderColor = '#ff3366';
                         
-                        let safeMsg = String(result).replace(/_/g, ' ');
+                        let safeMsg = result.replace(/_/g, ' ');
                         bubble.innerHTML = `<span style="color:#ff3366; font-size:16px;">${safeMsg}</span>`;
-                        bubble.classList.remove('hidden'); // Show error
                         
                         setTimeout(() => { 
                             bubble.style.borderColor = '#000'; 
                             if (state.turn === 'user') updateTypingBubble(); 
-                        }, 800);
-                    } else {
-                        // Complete success, guarantee user state is wiped clean
-                        state.userTyped = '';
+                        }, 600);
                     }
                 }
             } else if (/^[a-zA-Z]$/.test(e.key)) {
                 state.userTyped += e.key.toLowerCase(); bubble.style.borderColor = '#000'; 
-                if (state.turn === 'user' && !bubble.innerHTML.includes('ff3366')) updateTypingBubble();
             }
+            
+            if (state.turn === 'user' && !bubble.innerHTML.includes('ff3366')) updateTypingBubble();
         } catch(err) {
             console.error("Keyboard Event Crash:", err);
             state.userTyped = '';
@@ -867,7 +890,7 @@
         }
     });
 
-    // --- BOT AI (Bulletproof Safeties) ---
+    // --- BOT AI ---
     function triggerBotTurn() {
         const bubble = document.getElementById('botTyping');
         bubble.innerText = "..."; 
