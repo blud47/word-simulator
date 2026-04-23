@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Last Letter Simulator - Final Engine Optimization</title>
+    <title>Last Letter Simulator - Master Output</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
 
@@ -56,9 +56,10 @@
 
         /* Banned Prefix Stash */
         .stash-box { background: #111; border: 2px dashed #444; border-radius: 6px; min-height: 60px; padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; }
-        .banned-tag { background: #ff3366; color: #fff; padding: 5px 10px; border-radius: 4px; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; font-family: 'Segoe UI', sans-serif; font-weight: bold; box-shadow: 0 2px 0 #cc0033; text-transform: uppercase; }
-        .banned-tag span { cursor: pointer; color: #ffcc00; transition: 0.2s; }
-        .banned-tag span:hover { color: #fff; transform: scale(1.2); }
+        .banned-tag { background: #ff3366; color: #fff; padding: 5px 10px; border-radius: 4px; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; font-family: 'Segoe UI', sans-serif; font-weight: bold; box-shadow: 0 2px 0 #cc0033; text-transform: uppercase; max-width: 100%; box-sizing: border-box; }
+        .banned-tag .tag-text { overflow-wrap: anywhere; word-break: break-all; }
+        .banned-tag .tag-close { cursor: pointer; color: #ffcc00; transition: 0.2s; flex-shrink: 0; padding-left: 4px; font-size: 16px;}
+        .banned-tag .tag-close:hover { color: #fff; transform: scale(1.2); }
 
         /* Practice Sidebar UI */
         #practiceSidebar { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); width: 200px; background: rgba(0, 0, 0, 0.7); border: 2px solid #b026ff; border-radius: 12px; padding: 15px; box-sizing: border-box; backdrop-filter: blur(5px); z-index: 10; max-height: 80vh; display: flex; flex-direction: column; }
@@ -162,7 +163,7 @@
             </div>
             <div class="setting-group">
                 <label>🚫 Banned Prefix Stash (Vault Saved)</label>
-                <input type="text" id="stashInput" placeholder="Type prefix & press Enter..." autocomplete="off">
+                <input type="text" id="stashInput" placeholder="Space or comma separated list..." autocomplete="off">
                 <div class="stash-box" id="stashBox">
                     <span style="color:#666; font-size:12px; margin-top:5px; font-family:Arial;">No bans active.</span>
                 </div>
@@ -223,7 +224,7 @@
         <div id="analysisProgress" class="progress-text"></div>
         <div class="log-container analysis-container" id="analysisContent">
             </div>
-        <button class="btn" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;" id="analysisBackBtn" onclick="closeAnalysis()" disabled>WAIT...</button>
+        <button class="btn" style="background:#444; border-color:#222; box-shadow: 0 6px 0 #111;" id="analysisBackBtn" onclick="closeAnalysis()">BACK</button>
     </div>
 
     <div class="environment"><div class="carpet"></div></div>
@@ -409,38 +410,67 @@
         shrinkStartTurn: 50, shrinkIntervalTurn: 1, botSpamSuffix: '', practiceWords: [] 
     };
 
-    // --- BANNED PREFIX STASH ---
+    // --- BANNED PREFIX STASH (SMART PARSER INCORPORATED) ---
     function saveVault() { localStorage.setItem('lastLetter_BannedPrefixes', JSON.stringify(BANNED_PREFIXES)); }
+
+    function processAndAddBans(inputString) {
+        // Parses commas, quotes, and newlines as spaces so you can copy/paste bulk lists
+        let cleaned = inputString.toLowerCase().replace(/["',]/g, ' ');
+        let words = cleaned.split(/\s+/);
+        let addedAny = false;
+
+        words.forEach(word => {
+            let pureAlpha = word.replace(/[^a-z]/g, ''); 
+            if (pureAlpha && !BANNED_PREFIXES.includes(pureAlpha)) {
+                BANNED_PREFIXES.push(pureAlpha);
+                addedAny = true;
+            }
+        });
+
+        if (addedAny) {
+            renderStash();
+            saveVault();
+        }
+        return addedAny;
+    }
 
     const stashInput = document.getElementById('stashInput');
     stashInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
-            let val = this.value.trim().toLowerCase().replace(/[^a-z]/g, '');
-            if (val && !BANNED_PREFIXES.includes(val)) { BANNED_PREFIXES.push(val); renderStash(); saveVault(); }
+            processAndAddBans(this.value);
             this.value = '';
         }
     });
     
     function submitAnalysisBan() {
         let inp = document.getElementById('analysisStashInput');
-        let val = inp.value.trim().toLowerCase().replace(/[^a-z]/g, '');
-        if (val && !BANNED_PREFIXES.includes(val)) { BANNED_PREFIXES.push(val); renderStash(); saveVault(); }
-        inp.value = ''; inp.placeholder = "Added to Vault!";
+        let added = processAndAddBans(inp.value);
+        inp.value = ''; 
+        inp.placeholder = added ? "Added to Vault!" : "Already banned or invalid";
         setTimeout(() => inp.placeholder = "Manually ban a prefix here...", 1000);
     }
     
     function addQuickBan(btn, prefix) {
-        let val = prefix.trim().toLowerCase().replace(/[^a-z]/g, '');
-        if (val && !BANNED_PREFIXES.includes(val)) { BANNED_PREFIXES.push(val); renderStash(); saveVault(); }
+        processAndAddBans(prefix);
         btn.innerText = "🚫 VAULT SAVED!";
         btn.style.background = "#444"; btn.style.boxShadow = "0 4px 0 #222"; btn.style.color = "#aaa"; btn.disabled = true;
     }
 
     function removeBan(prefix) { BANNED_PREFIXES = BANNED_PREFIXES.filter(p => p !== prefix); renderStash(); saveVault(); }
+    
     function renderStash() {
         const box = document.getElementById('stashBox');
-        if (BANNED_PREFIXES.length === 0) { box.innerHTML = '<span style="color:#666; font-size:12px; margin-top:5px; font-family:Arial;">No bans active.</span>'; return; }
-        box.innerHTML = BANNED_PREFIXES.map(p => `<div class="banned-tag">${p.toUpperCase()} <span onclick="removeBan('${p}')">✖</span></div>`).join('');
+        if (BANNED_PREFIXES.length === 0) { 
+            box.innerHTML = '<span style="color:#666; font-size:12px; margin-top:5px; font-family:Arial;">No bans active.</span>'; 
+            return; 
+        }
+        // HTML updated to ensure long tags wrap properly with CSS
+        box.innerHTML = BANNED_PREFIXES.map(p => `
+            <div class="banned-tag">
+                <span class="tag-text">${p.toUpperCase()}</span>
+                <span class="tag-close" onclick="removeBan('${p}')">✖</span>
+            </div>
+        `).join('');
     }
 
     // --- NAVIGATION ---
@@ -534,7 +564,7 @@
             if (round.died === 'user') {
                 container.innerHTML += `
                     <div class='move-card blunder' style='margin-top: 15px; border-color: #ff3366;'>
-                        <div class='move-header'><span style="color:#ff3366;">💀 You Lost a Heart</span></div>
+                        <div class='move-header'><span style="color:#ff3366;">💀 You Lost a Heart (Timer/Trapped)</span></div>
                         <div class='move-eval'>You failed on prefix <strong>${round.prompt.toUpperCase()}</strong>.</div>
                         <button class="btn btn-small" style="background:#ff3366; margin-top:10px; box-shadow: 0 4px 0 #cc0033;" onclick="addQuickBan(this, '${round.prompt}')">🚫 BAN PREFIX [${round.prompt.toUpperCase()}]</button>
                     </div>`;
@@ -589,12 +619,7 @@
         let bestLine = null;
         let lowestBotOptions = 99999;
 
-        // PRUNING: Only test traps + 50 normal words to prevent engine timeout
-        let myTraps = allValidMyMoves.filter(w => TRAP_SET.has(w));
-        let myOthers = allValidMyMoves.filter(w => !TRAP_SET.has(w)).slice(0, 50);
-        let candidateMoves = [...myTraps, ...myOthers];
-
-        let evaluatedMoves = candidateMoves.map(w => {
+        let evaluatedMoves = allValidMyMoves.map(w => {
             let simPrompt = calculateNextPromptSim(w, turnNum, historicalUsedSet);
             let opts = getWordsStartingWith(simPrompt, historicalUsedSet).length; 
             let isTrap = TRAP_SET.has(w);
@@ -631,15 +656,10 @@
                     
                     if (myNextOptions.length === 0) continue; 
 
-                    // PRUNING: Limit follow up evaluation
-                    let nextTraps = myNextOptions.filter(w => TRAP_SET.has(w));
-                    let nextOthers = myNextOptions.filter(w => !TRAP_SET.has(w)).slice(0, 10);
-                    let nextCandidates = [...nextTraps, ...nextOthers];
-
                     let bestFollowUp = myNextOptions[0];
                     let bestFollowUpOpts = 99999;
                     
-                    nextCandidates.forEach(nw => {
+                    myNextOptions.forEach(nw => {
                          let nwPrompt = calculateNextPromptSim(nw, turnNum + 2, simUsed);
                          let nwOpts = getWordsStartingWith(nwPrompt, simUsed).length;
                          if (nwOpts < bestFollowUpOpts) {
@@ -730,19 +750,17 @@
         } else { counter.classList.remove('danger-text'); }
     }
 
-    // --- TIMER SYSTEM ---
-    function calculateMaxTime() {
+    function startTimer() {
+        clearInterval(state.intervalId); 
         let base = 15.0;
         if (state.turnCount >= state.shrinkStartTurn) {
             let drops = Math.floor((state.turnCount - state.shrinkStartTurn) / state.shrinkIntervalTurn) + 1;
-            return Math.max(5.0, base - drops);
+            state.currentMaxTime = Math.max(5.0, base - drops);
+        } else {
+            state.currentMaxTime = base;
         }
-        return base;
-    }
+        state.timer = state.currentMaxTime;
 
-    function startTimer() {
-        clearInterval(state.intervalId); 
-        state.currentMaxTime = calculateMaxTime(); state.timer = state.currentMaxTime;
         const bomb = document.getElementById('bombDisplay');
         bomb.classList.add('ticking'); bomb.classList.remove('exploding');
         let lastInt = Math.ceil(state.timer);
@@ -805,38 +823,28 @@
 
     // --- TURN HANDLING & ERROR DISPLAY ---
     function submitWord(word) {
-        try {
-            if (!word.startsWith(state.prompt)) return "PREFIX_MISMATCH";
-            if (!MAIN_SET.has(word)) return "NOT_IN_DICTIONARY";
-            if (USED_WORDS.has(word)) return "ALREADY_USED";
-            
-            playCorrect(); USED_WORDS.add(word);
-            
-            if (state.turn === 'bot') state.lastBotWord = word;
-            if (state.turn === 'user' && state.gameType === 'custom') {
-                let pracItem = state.practiceWords.find(p => p.word === word);
-                if (pracItem) { pracItem.hit = true; renderPracticeUI(); }
-            }
-            
-            logHistory(state.turn, word, state.prompt); 
-            state.turnCount++;
-            
-            let nextPrompt = calculateNextPromptSim(word, state.turnCount - 1, USED_WORDS);
-            setPrompt(nextPrompt); 
-            
-            if(state.turn === 'user') { document.getElementById('userTyping').classList.add('hidden'); }
-            
-            switchTurn(); return "SUCCESS";
-        } catch (err) {
-            console.error("Submission Error:", err);
-            let errMsg = err.message.replace(/ /g, '_').toUpperCase();
-            return `ERR_${errMsg}`; 
+        if (!word.startsWith(state.prompt)) return "PREFIX_MISMATCH";
+        if (!MAIN_SET.has(word)) return "NOT_IN_DICTIONARY";
+        if (USED_WORDS.has(word)) return "ALREADY_USED";
+        
+        playCorrect(); USED_WORDS.add(word);
+        
+        if (state.turn === 'bot') state.lastBotWord = word;
+        if (state.turn === 'user' && state.gameType === 'custom') {
+            let pracItem = state.practiceWords.find(p => p.word === word);
+            if (pracItem) { pracItem.hit = true; renderPracticeUI(); }
         }
+        
+        logHistory(state.turn, word, state.prompt); 
+        state.turnCount++;
+        
+        let nextPrompt = calculateNextPromptSim(word, state.turnCount - 1, USED_WORDS);
+        setPrompt(nextPrompt); switchTurn(); return "SUCCESS";
     }
 
     function switchTurn() {
         if (state.turn === 'user') {
-            state.turn = 'bot'; triggerBotTurn();
+            state.turn = 'bot'; document.getElementById('userTyping').classList.add('hidden'); triggerBotTurn();
         } else {
             state.turn = 'user'; document.getElementById('botTyping').classList.add('hidden');
             state.userTyped = ''; updateTypingBubble();
@@ -846,48 +854,42 @@
 
     // --- SMART INPUT CAPTURE ---
     document.addEventListener('keydown', (e) => {
-        try {
-            if(document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return; 
+        if(document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return; 
 
-            if (state.mode === 'playing' && e.key === 'Escape') { pauseGame(); return; }
-            if (state.mode === 'paused' && e.key === 'Escape') { resumeGame(); return; }
-            if (state.mode !== 'playing' || state.turn !== 'user') return;
+        if (state.mode === 'playing' && e.key === 'Escape') { pauseGame(); return; }
+        if (state.mode === 'paused' && e.key === 'Escape') { resumeGame(); return; }
+        if (state.mode !== 'playing' || state.turn !== 'user') return;
 
-            const bubble = document.getElementById('userTyping');
+        const bubble = document.getElementById('userTyping');
+        
+        if (e.key === 'Backspace') {
+            if (state.userTyped.length > 0) state.userTyped = state.userTyped.slice(0, -1);
+        } else if (e.key === 'Enter') {
+            let attempt = state.userTyped.toLowerCase();
             
-            if (e.key === 'Backspace') {
-                if (state.userTyped.length > 0) state.userTyped = state.userTyped.slice(0, -1);
-            } else if (e.key === 'Enter') {
-                let attempt = state.userTyped.toLowerCase();
-                
-                if (!attempt.startsWith(state.prompt)) { attempt = state.prompt + attempt; }
-                
-                if (attempt.length >= state.prompt.length && attempt.length > 0) {
-                    let result = submitWord(attempt);
-                    if (result !== "SUCCESS") {
-                        state.userTyped = ''; 
-                        bubble.style.animation = 'none'; bubble.offsetHeight;
-                        bubble.style.animation = 'errorShake 0.3s'; bubble.style.borderColor = '#ff3366';
-                        
-                        let safeMsg = result.replace(/_/g, ' ');
-                        bubble.innerHTML = `<span style="color:#ff3366; font-size:16px;">${safeMsg}</span>`;
-                        
-                        setTimeout(() => { 
-                            bubble.style.borderColor = '#000'; 
-                            if (state.turn === 'user') updateTypingBubble(); 
-                        }, 600);
-                    }
+            if (!attempt.startsWith(state.prompt)) { attempt = state.prompt + attempt; }
+            
+            if (attempt.length >= state.prompt.length && attempt.length > 0) {
+                let result = submitWord(attempt);
+                if (result !== "SUCCESS") {
+                    state.userTyped = ''; 
+                    bubble.style.animation = 'none'; bubble.offsetHeight;
+                    bubble.style.animation = 'errorShake 0.3s'; bubble.style.borderColor = '#ff3366';
+                    
+                    let safeMsg = result.replace(/_/g, ' ');
+                    bubble.innerHTML = `<span style="color:#ff3366; font-size:16px;">${safeMsg}</span>`;
+                    
+                    setTimeout(() => { 
+                        bubble.style.borderColor = '#000'; 
+                        if (state.turn === 'user') updateTypingBubble(); 
+                    }, 600);
                 }
-            } else if (/^[a-zA-Z]$/.test(e.key)) {
-                state.userTyped += e.key.toLowerCase(); bubble.style.borderColor = '#000'; 
             }
-            
-            if (state.turn === 'user' && !bubble.innerHTML.includes('ff3366')) updateTypingBubble();
-        } catch(err) {
-            console.error("Keyboard Event Crash:", err);
-            state.userTyped = '';
-            updateTypingBubble();
+        } else if (/^[a-zA-Z]$/.test(e.key)) {
+            state.userTyped += e.key.toLowerCase(); bubble.style.borderColor = '#000'; 
         }
+        
+        if (state.turn === 'user' && !bubble.innerHTML.includes('ff3366')) updateTypingBubble();
     });
 
     // --- BOT AI ---
@@ -903,57 +905,40 @@
         state.botTimeout = setTimeout(() => {
             if (state.mode !== 'playing' || state.turn !== 'bot') return;
 
-            try {
-                let validWords = getWordsStartingWith(state.prompt, USED_WORDS);
-                
-                if (validWords.length === 0) { 
-                    bubble.innerText = "!?"; 
-                    bubble.style.color = "#ff3333";
-                    state.timer = 0.5; 
-                    return; 
-                }
-
-                let diff = document.getElementById('botDifficulty').value;
-                let chosenWord = "";
-
-                if (state.gameType === 'custom' && state.botSpamSuffix) {
-                    let spams = validWords.filter(w => w.endsWith(state.botSpamSuffix));
-                    if (spams.length > 0) chosenWord = spams[Math.floor(Math.random() * spams.length)];
-                }
-
-                if (!chosenWord) {
-                    if (diff === 'easy') {
-                        chosenWord = validWords[Math.floor(Math.random() * validWords.length)];
-                    } else {
-                        let traps = validWords.filter(w => TRAP_SET.has(w));
-                        if (traps.length > 0) {
-                            chosenWord = traps[Math.floor(Math.random() * traps.length)]; 
-                        } else {
-                            validWords.sort((a, b) => a.length - b.length);
-                            chosenWord = validWords[Math.floor(Math.random() * Math.min(5, validWords.length))];
-                        }
-                    }
-                }
-
-                bubble.style.color = "#000";
-                bubble.innerText = chosenWord.toUpperCase();
-                
-                setTimeout(() => { 
-                    try {
-                        if (state.mode === 'playing' && state.turn === 'bot') {
-                            let res = submitWord(chosenWord);
-                            if (res !== "SUCCESS") state.timer = 0.5; 
-                        }
-                    } catch(innerErr) {
-                        state.timer = 0.5; 
-                    }
-                }, 300);
-
-            } catch(e) {
-                console.error("Bot Engine Crash:", e);
-                let fallbackWords = getWordsStartingWith(state.prompt, USED_WORDS);
-                if (fallbackWords.length > 0) { submitWord(fallbackWords[0]); } else { state.timer = 0.5; }
+            let validWords = getWordsStartingWith(state.prompt, USED_WORDS);
+            
+            if (validWords.length === 0) { 
+                bubble.innerText = "!?"; 
+                bubble.style.color = "#ff3333";
+                state.timer = 0.5; 
+                return; 
             }
+
+            let diff = document.getElementById('botDifficulty').value;
+            let chosenWord = "";
+
+            if (state.gameType === 'custom' && state.botSpamSuffix) {
+                let spams = validWords.filter(w => w.endsWith(state.botSpamSuffix));
+                if (spams.length > 0) chosenWord = spams[Math.floor(Math.random() * spams.length)];
+            }
+
+            if (!chosenWord) {
+                if (diff === 'easy') {
+                    chosenWord = validWords[Math.floor(Math.random() * validWords.length)];
+                } else {
+                    let traps = validWords.filter(w => TRAP_SET.has(w));
+                    if (traps.length > 0) {
+                        chosenWord = traps[Math.floor(Math.random() * traps.length)]; 
+                    } else {
+                        validWords.sort((a, b) => a.length - b.length);
+                        chosenWord = validWords[Math.floor(Math.random() * Math.min(5, validWords.length))];
+                    }
+                }
+            }
+
+            bubble.style.color = "#000";
+            bubble.innerText = chosenWord.toUpperCase();
+            setTimeout(() => { if (state.mode === 'playing' && state.turn === 'bot') submitWord(chosenWord); }, 300);
         }, thinkTime);
     }
 
